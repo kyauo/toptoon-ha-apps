@@ -1,6 +1,6 @@
 name: "Toptoon Attendance"
-description: "Automatically checks in to Toptoon, retries failures, and notifies Home Assistant."
-version: "0.2.0"
+description: "Automatically checks in to Toptoon, retries failures, accepts browser session sync, and notifies Home Assistant."
+version: "0.3.0"
 slug: "toptoon_attendance"
 init: false
 startup: application
@@ -9,11 +9,12 @@ arch:
   - aarch64
   - amd64
 homeassistant_api: true
+stdin: true
 
 options:
   phpsessid: ""
   rm_session: ""
-  run_time: "00:15"
+  run_time: "00:30"
   timezone: "Asia/Seoul"
   retry_1_minutes: 5
   retry_2_minutes: 15

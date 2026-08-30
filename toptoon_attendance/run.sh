@@ -1,3 +1,4 @@
 #!/usr/bin/with-contenv bashio
-bashio::log.info "Starting Toptoon Attendance..."
-exec python3 /app/bot.py
+set -e
+echo "[INFO] Starting Toptoon Attendance..."
+exec /opt/venv/bin/python3 -u /bot.py

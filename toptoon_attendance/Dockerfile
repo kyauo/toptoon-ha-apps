@@ -1,20 +1,9 @@
-FROM ghcr.io/home-assistant/base:latest
-
-ARG BUILD_VERSION
-ARG BUILD_ARCH
-
-LABEL \
-  io.hass.version="${BUILD_VERSION}" \
-  io.hass.type="app" \
-  io.hass.arch="${BUILD_ARCH}"
-
-RUN apk add --no-cache python3 py3-requests tzdata
-
-WORKDIR /app
-
-COPY bot.py /app/bot.py
+ARG BUILD_FROM
+FROM $BUILD_FROM
+RUN apk add --no-cache python3 py3-pip tzdata \
+    && python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir requests
 COPY run.sh /run.sh
-
+COPY bot.py /bot.py
 RUN chmod a+x /run.sh
-
 CMD ["/run.sh"]
