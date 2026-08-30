@@ -23,3 +23,5 @@ Open **OPEN WEB UI** from the Home Assistant App page. The page shows readable l
 The web UI is exposed only through Home Assistant Ingress. Home Assistant authenticates the user before proxying the request to the App. The App rejects web requests whose source is not the Ingress proxy address.
 
 Do not commit session values or `/data/session.json` to GitHub.
+
+- 21:00 manual reminder: if no successful or already-confirmed attendance exists for the current day, send a mobile reminder to check Toptoon manually.

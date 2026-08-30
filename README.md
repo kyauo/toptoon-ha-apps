@@ -21,4 +21,8 @@ toptoon-ha-apps/
 
 ## Current version
 
-Contains **Toptoon Attendance v0.4.1**. This version adds timestamped logs, readable UI times, automatic preservation of server-refreshed Toptoon session cookies, clearer first-setup wording, and an X close button in the Ingress UI.
+Contains **Toptoon Attendance v0.4.2**. This version adds timestamped logs, readable UI times, automatic preservation of server-refreshed Toptoon session cookies, clearer first-setup wording, and an X close button in the Ingress UI.
+
+
+### 21:00 safety reminder
+If today's attendance has not been confirmed by `manual_reminder_time` (default 21:00), the App sends one mobile reminder so you can check Toptoon manually before the day ends.

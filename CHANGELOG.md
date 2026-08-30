@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2
+- Added a configurable 21:00 safety reminder when today's Toptoon attendance has not been confirmed.
+- Reminder is sent once per day and skipped when `success` or `already_done` is already recorded.
+- Added `manual_reminder_time` and `notify_manual_reminder` options.
+
+
 ## 0.4.1
 
 - Added configured-local-time timestamp to every log line.

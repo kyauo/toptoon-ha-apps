@@ -25,7 +25,7 @@ HEADERS = {
     "X-Requested-With": "XMLHttpRequest",
     "Origin": "https://toptoon.com",
     "Referer": "https://toptoon.com/event/attendance",
-    "User-Agent": "Mozilla/5.0 Toptoon-HA/0.4.1",
+    "User-Agent": "Mozilla/5.0 Toptoon-HA/0.4.2",
 }
 DATA = {"ci_token": "null"}
 OK_STATES = {"success", "already_done"}
@@ -312,6 +312,31 @@ def morning_recheck_and_notify(options, now):
     save_status(last_result=state, last_message=message, mobile_notified=True)
 
 
+
+def send_manual_reminder_if_needed(options, now):
+    """At the daily deadline, remind the user if today's attendance has not been confirmed."""
+    if not options.get("notify_manual_reminder", True):
+        return
+    today = now.date().isoformat()
+    status = load_status()
+    if status.get("manual_reminder_date") == today:
+        return
+    if status.get("last_run_date") == today and status.get("last_result") in OK_STATES:
+        save_status(manual_reminder_date=today)
+        log("INFO", "21:00 manual reminder skipped: today's Toptoon attendance is already confirmed.")
+        return
+
+    last_result = result_label(status.get("last_result"))
+    last_message = status.get("last_message") or "오늘 성공 기록이 없습니다."
+    mobile_push(
+        options.get("mobile_notify_entity", "notify.ky17"),
+        "Toptoon 출석 확인 필요",
+        f"21:00까지 오늘 Toptoon 출석 성공이 확인되지 않았습니다. 직접 출석하거나 HA의 Toptoon Attendance 웹 UI에서 세션 상태를 확인해 주세요.\n마지막 상태: {last_result} / {last_message}",
+    )
+    save_status(manual_reminder_date=today)
+    log("WARNING", "21:00 manual attendance reminder sent: no confirmed success for today.")
+
+
 def within_minute(now, hhmm):
     hour, minute = [int(x) for x in hhmm.split(":")]
     return now.hour == hour and now.minute == minute
@@ -429,7 +454,7 @@ button {{ width:100%; margin-top:18px; padding:13px; border:0; border-radius:9px
 
 
 class IngressHandler(BaseHTTPRequestHandler):
-    server_version = "ToptoonAttendance/0.4.1"
+    server_version = "ToptoonAttendance/0.4.2"
 
     def log_message(self, fmt, *args):
         log("WEB", fmt % args)
@@ -504,7 +529,8 @@ def main():
         f"Daily attendance: {options.get('run_time','00:30')} "
         f"({options.get('timezone','Asia/Seoul')}); "
         f"retries +{options.get('retry_1_minutes',5)}m/+{options.get('retry_2_minutes',15)}m; "
-        f"mobile alert check: {options.get('mobile_alert_time','09:05')}"
+        f"mobile alert check: {options.get('mobile_alert_time','09:05')}; "
+        f"manual reminder: {options.get('manual_reminder_time','21:00')}"
     )
     log("INFO", "Manual session renewal is available through Home Assistant Ingress.")
 
@@ -526,6 +552,11 @@ def main():
             if status.get("morning_check_date") != today:
                 morning_recheck_and_notify(options, now)
                 save_status(morning_check_date=today)
+
+        status = load_status()
+        if within_minute(now, options.get("manual_reminder_time", "21:00")):
+            if status.get("manual_reminder_date") != today:
+                send_manual_reminder_if_needed(options, now)
 
         time.sleep(1)
 

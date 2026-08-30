@@ -1,8 +1,8 @@
-# Toptoon Attendance 0.4.1
+# Toptoon Attendance 0.4.2
 
 Home Assistant App for scheduled Toptoon attendance.
 
-## v0.4.1
+## v0.4.2
 
 - Adds KST/local-time timestamps to every App log line.
 - Displays saved/test times in the Ingress UI as readable local time instead of raw ISO strings.
@@ -19,3 +19,7 @@ Home Assistant App for scheduled Toptoon attendance.
 4. Re-enter the two values only if Toptoon reports that the login is fully expired.
 
 Never put real cookie values in GitHub.
+
+
+### 21:00 safety reminder
+If today's attendance has not been confirmed by `manual_reminder_time` (default 21:00), the App sends one mobile reminder so you can check Toptoon manually before the day ends.
