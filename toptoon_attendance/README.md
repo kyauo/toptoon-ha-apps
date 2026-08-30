@@ -1,8 +1,8 @@
-# Toptoon Attendance 0.4.2
+# Toptoon Attendance 0.4.3
 
 Home Assistant App for scheduled Toptoon attendance.
 
-## v0.4.2
+## v0.4.3
 
 - Adds KST/local-time timestamps to every App log line.
 - Displays saved/test times in the Ingress UI as readable local time instead of raw ISO strings.

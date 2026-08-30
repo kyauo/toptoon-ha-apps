@@ -1,6 +1,6 @@
 # KY Home Assistant Apps
 
-Home Assistant App repository containing **Toptoon Attendance**.
+Home Assistant App repository containing **Toptoon Attendance Bot**.
 
 ## Repository structure
 
@@ -21,7 +21,7 @@ toptoon-ha-apps/
 
 ## Current version
 
-Contains **Toptoon Attendance v0.4.2**. This version adds timestamped logs, readable UI times, automatic preservation of server-refreshed Toptoon session cookies, clearer first-setup wording, and an X close button in the Ingress UI.
+Contains **Toptoon Attendance v0.4.3**. This version adds timestamped logs, readable UI times, automatic preservation of server-refreshed Toptoon session cookies, clearer first-setup wording, and an X close button in the Ingress UI.
 
 
 ### 21:00 safety reminder

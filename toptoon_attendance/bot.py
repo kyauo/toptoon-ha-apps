@@ -25,7 +25,7 @@ HEADERS = {
     "X-Requested-With": "XMLHttpRequest",
     "Origin": "https://toptoon.com",
     "Referer": "https://toptoon.com/event/attendance",
-    "User-Agent": "Mozilla/5.0 Toptoon-HA/0.4.2",
+    "User-Agent": "Mozilla/5.0 Toptoon-HA/0.4.3",
 }
 DATA = {"ci_token": "null"}
 OK_STATES = {"success", "already_done"}
@@ -454,7 +454,7 @@ button {{ width:100%; margin-top:18px; padding:13px; border:0; border-radius:9px
 
 
 class IngressHandler(BaseHTTPRequestHandler):
-    server_version = "ToptoonAttendance/0.4.2"
+    server_version = "ToptoonAttendance/0.4.3"
 
     def log_message(self, fmt, *args):
         log("WEB", fmt % args)
