@@ -1,4 +1,4 @@
-# Toptoon Attendance 0.4.0
+# Toptoon Attendance 0.4.1
 
 ## Automatic flow
 
@@ -8,22 +8,18 @@
 - After all attempts fail: Home Assistant persistent notification.
 - Morning unresolved-failure recheck: default 09:05.
 - If still unresolved: mobile notification through the configured notify entity.
+- Every log line includes the configured local date/time and timezone abbreviation.
 
-## Renewing an expired login session
+## Session lifecycle
 
-This version no longer uses a bookmarklet, webhook, or STDIN to transfer browser cookies.
+The Ingress form is primarily for first setup and recovery after a fully expired login. After a valid session has been stored, the App uses it for scheduled attendance. If Toptoon sends a refreshed `PHPSESSID` or `rm_session` cookie in a response, the App automatically saves the refreshed value to `/data/session.json`. Values are never written to logs or rendered back into the web UI.
 
-Open the App's **OPEN WEB UI** button through Home Assistant Ingress. Enter the two Toptoon session values manually:
+## Web UI
 
-- `PHPSESSID`
-- `rm_session`
-
-Press **저장하고 즉시 출석 확인**. The App writes the new values to `/data/session.json` and immediately performs an attendance request.
-
-The session values are not printed to logs or rendered back into the page.
+Open **OPEN WEB UI** from the Home Assistant App page. The page shows readable local timestamps, current attendance state, and an X close button at the top-right.
 
 ## Security
 
-The web UI is exposed only through Home Assistant Ingress. Home Assistant authenticates the user before proxying the request to the App. The App also rejects web requests whose source is not the Ingress proxy address.
+The web UI is exposed only through Home Assistant Ingress. Home Assistant authenticates the user before proxying the request to the App. The App rejects web requests whose source is not the Ingress proxy address.
 
 Do not commit session values or `/data/session.json` to GitHub.

@@ -1,6 +1,6 @@
 name: "Toptoon Attendance"
 description: "Automatically checks in to Toptoon, retries failures, provides an Ingress session-renewal UI, and notifies Home Assistant."
-version: "0.4.0"
+version: "0.4.1"
 slug: "toptoon_attendance"
 init: false
 startup: application

@@ -25,7 +25,7 @@ HEADERS = {
     "X-Requested-With": "XMLHttpRequest",
     "Origin": "https://toptoon.com",
     "Referer": "https://toptoon.com/event/attendance",
-    "User-Agent": "Mozilla/5.0 Toptoon-HA/0.4.0",
+    "User-Agent": "Mozilla/5.0 Toptoon-HA/0.4.1",
 }
 DATA = {"ci_token": "null"}
 OK_STATES = {"success", "already_done"}
@@ -33,7 +33,11 @@ ATTENDANCE_LOCK = threading.Lock()
 
 
 def log(level, message):
-    print(f"[{level}] {message}", flush=True)
+    try:
+        stamp = now_local().strftime("%Y-%m-%d %H:%M:%S %Z")
+    except Exception:
+        stamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    print(f"[{stamp}] [{level}] {message}", flush=True)
 
 
 def load_json(path, default):
@@ -76,6 +80,36 @@ def current_cookies(options=None):
         "PHPSESSID": session.get("phpsessid") or options.get("phpsessid", ""),
         "rm_session": session.get("rm_session") or options.get("rm_session", ""),
     }
+
+
+def persist_session_from_http(session_obj, sent_cookies, options=None):
+    """Persist Toptoon session cookies if the server rotated them."""
+    options = options or load_options()
+    rotated = {}
+    for cookie in session_obj.cookies:
+        if cookie.name in ("PHPSESSID", "rm_session") and cookie.value:
+            rotated[cookie.name] = cookie.value
+
+    changed = []
+    for name in ("PHPSESSID", "rm_session"):
+        if rotated.get(name) and rotated[name] != sent_cookies.get(name, ""):
+            changed.append(name)
+
+    if not changed:
+        return False
+
+    previous = load_json(SESSION_PATH, {})
+    updated_at = now_local(options).isoformat(timespec="seconds")
+    save_json(SESSION_PATH, {
+        "phpsessid": rotated.get("PHPSESSID") or sent_cookies.get("PHPSESSID", ""),
+        "rm_session": rotated.get("rm_session") or sent_cookies.get("rm_session", ""),
+        "updated_at": updated_at,
+        "source": "toptoon_response",
+        "manual_updated_at": previous.get("manual_updated_at"),
+    })
+    save_status(session_updated_at=updated_at)
+    log("INFO", f"Toptoon refreshed session cookie(s): {', '.join(changed)}.")
+    return True
 
 
 def ha_service(domain, service, payload):
@@ -123,13 +157,15 @@ def check_attendance(options=None):
 
     try:
         with ATTENDANCE_LOCK:
-            r = requests.post(
-                TOPTOON_URL,
-                headers=HEADERS,
-                cookies=cookies,
-                data=DATA,
-                timeout=20,
-            )
+            with requests.Session() as http:
+                http.cookies.update(cookies)
+                r = http.post(
+                    TOPTOON_URL,
+                    headers=HEADERS,
+                    data=DATA,
+                    timeout=20,
+                )
+                persist_session_from_http(http, cookies, options)
         log("INFO", f"Toptoon HTTP {r.status_code}")
         r.raise_for_status()
     except requests.RequestException as e:
@@ -162,10 +198,11 @@ def store_session(phpsessid, rm_session, source="manual_ingress"):
         "phpsessid": phpsessid,
         "rm_session": rm_session,
         "updated_at": updated_at,
+        "manual_updated_at": updated_at,
         "source": source,
     })
     save_status(session_updated_at=updated_at)
-    log("INFO", f"Session updated manually at {updated_at}.")
+    log("INFO", "Session updated manually through Ingress.")
     return True, updated_at
 
 
@@ -209,7 +246,7 @@ def run_with_retries(options, now):
 
         options = load_options()
         check_time = now_local(options)
-        log("INFO", f"Checking attendance at {check_time.isoformat(timespec='seconds')}")
+        log("INFO", "Checking attendance.")
         last_state, last_message = check_attendance(options)
 
         if last_state in OK_STATES:
@@ -292,16 +329,40 @@ def result_label(state):
     }.get(state, state or "기록 없음")
 
 
+def display_time(value):
+    if not value or value == "-":
+        return "-"
+    try:
+        tz = ZoneInfo(load_options().get("timezone", "Asia/Seoul"))
+        dt = datetime.fromisoformat(str(value))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz)
+        else:
+            dt = dt.astimezone(tz)
+        return dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+    except Exception:
+        return str(value)
+
+
 def page_html(flash=None, flash_kind="info"):
     status = load_status()
     session = load_json(SESSION_PATH, {})
-    updated_at = session.get("updated_at") or "아직 저장된 세션 없음"
+    has_session = bool(session.get("phpsessid") and session.get("rm_session"))
+    updated_at = display_time(session.get("updated_at")) if has_session else "아직 저장된 세션 없음"
     last_result = result_label(status.get("last_result"))
     last_message = status.get("last_message") or "아직 실행 기록 없음"
-    tested_at = status.get("session_tested_at") or "-"
+    tested_at = display_time(status.get("session_tested_at"))
     flash_block = ""
     if flash:
         flash_block = f'<div class="flash {html.escape(flash_kind)}">{html.escape(flash)}</div>'
+
+    state = status.get("last_result")
+    if not has_session:
+        intro = "최초 설정입니다. Toptoon 로그인 세션 두 값을 한 번 저장하면 이후 자동 출석은 Home Assistant가 담당합니다."
+    elif state in OK_STATES:
+        intro = "세션이 등록되어 있고 최근 확인도 정상입니다. 평소에는 아래 값을 다시 입력할 필요가 없으며, 로그인 만료 알림을 받았을 때만 갱신하세요."
+    else:
+        intro = "세션이 등록되어 있습니다. 자동 출석은 기존 일정대로 동작하며, 로그인 만료 알림을 받았을 때만 아래 두 값을 새로 저장하면 됩니다."
 
     return f"""<!doctype html>
 <html lang="ko">
@@ -312,11 +373,13 @@ def page_html(flash=None, flash_kind="info"):
 <style>
 :root {{ color-scheme: light dark; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }}
 body {{ margin:0; padding:24px; background:var(--primary-background-color,#fafafa); color:var(--primary-text-color,#222); }}
-main {{ max-width:680px; margin:0 auto; }}
+main {{ max-width:680px; margin:0 auto; position:relative; }}
 .card {{ background:var(--card-background-color,#fff); border-radius:14px; padding:20px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,.08); }}
-h1 {{ font-size:24px; margin:0 0 8px; }}
+h1 {{ font-size:24px; margin:0 42px 8px 0; }}
 h2 {{ font-size:18px; margin:0 0 12px; }}
 p {{ line-height:1.55; }}
+.close-btn {{ position:absolute; top:8px; right:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:50%; text-decoration:none; color:inherit; font-size:30px; line-height:1; font-weight:300; background:rgba(128,128,128,.13); z-index:2; }}
+.close-btn:hover {{ background:rgba(128,128,128,.23); }}
 label {{ display:block; font-weight:600; margin:14px 0 6px; }}
 input {{ box-sizing:border-box; width:100%; padding:12px; border:1px solid #8888; border-radius:9px; font:inherit; }}
 button {{ width:100%; margin-top:18px; padding:13px; border:0; border-radius:9px; font:inherit; font-weight:700; cursor:pointer; background:#03a9f4; color:white; }}
@@ -327,26 +390,28 @@ button {{ width:100%; margin-top:18px; padding:13px; border:0; border-radius:9px
 .flash.error {{ background:#c6282830; }}
 .flash.info {{ background:#1565c030; }}
 .note {{ font-size:13px; opacity:.78; }}
-@media (max-width:520px) {{ body {{ padding:12px; }} .meta {{ grid-template-columns:1fr; }} }}
+.status-ok {{ font-weight:700; }}
+@media (max-width:520px) {{ body {{ padding:12px; }} .meta {{ grid-template-columns:1fr; }} .close-btn {{ top:4px; right:4px; }} }}
 </style>
 </head>
 <body><main>
+<a class="close-btn" href="/" target="_top" aria-label="닫기" title="닫기">&times;</a>
 <div class="card">
 <h1>Toptoon Attendance</h1>
-<p>자동 출석은 기존 일정대로 동작합니다. 로그인 세션이 만료됐을 때만 아래 두 값을 새로 저장하면 됩니다.</p>
+<p>{html.escape(intro)}</p>
 </div>
 {flash_block}
 <div class="card">
 <h2>현재 상태</h2>
 <div class="meta">
 <strong>세션 갱신 시각</strong><span>{html.escape(str(updated_at))}</span>
-<strong>최근 결과</strong><span>{html.escape(str(last_result))}</span>
+<strong>최근 결과</strong><span class="{'status-ok' if state in OK_STATES else ''}">{html.escape(str(last_result))}</span>
 <strong>최근 메시지</strong><span>{html.escape(str(last_message))}</span>
 <strong>수동 갱신 테스트</strong><span>{html.escape(str(tested_at))}</span>
 </div>
 </div>
 <div class="card">
-<h2>세션 갱신</h2>
+<h2>{'로그인 세션 갱신' if has_session else '최초 로그인 세션 등록'}</h2>
 <form method="post" action="">
 <label for="phpsessid">PHPSESSID</label>
 <input id="phpsessid" name="phpsessid" type="password" autocomplete="off" required>
@@ -354,17 +419,17 @@ button {{ width:100%; margin-top:18px; padding:13px; border:0; border-radius:9px
 <input id="rm_session" name="rm_session" type="password" autocomplete="off" required>
 <button type="submit">저장하고 즉시 출석 확인</button>
 </form>
-<p class="note">값은 Home Assistant App의 /data/session.json에만 저장되며 화면과 로그에는 표시하지 않습니다.</p>
+<p class="note">정상 운영 중에는 입력할 필요가 없습니다. 값은 Home Assistant App의 /data/session.json에만 저장되며 화면과 로그에는 표시하지 않습니다.</p>
 </div>
 <div class="card">
 <h2>갱신 방법</h2>
-<p>Toptoon에 정상 로그인한 뒤 브라우저의 쿠키 관리 화면에서 PHPSESSID와 rm_session 값을 복사해 위 칸에 붙여 넣으세요. 저장하면 이 App이 즉시 출석 요청을 보내 새 세션이 유효한지 확인합니다.</p>
+<p>Toptoon 로그인 세션이 완전히 만료된 경우에만 브라우저의 쿠키 관리 화면에서 PHPSESSID와 rm_session 값을 복사해 위 칸에 붙여 넣으세요. 저장하면 이 App이 즉시 출석 요청을 보내 새 세션이 유효한지 확인합니다. Toptoon이 이후 응답에서 세션 쿠키를 갱신하면 App이 새 값을 자동으로 보존합니다.</p>
 </div>
 </main></body></html>"""
 
 
 class IngressHandler(BaseHTTPRequestHandler):
-    server_version = "ToptoonAttendance/0.4.0"
+    server_version = "ToptoonAttendance/0.4.1"
 
     def log_message(self, fmt, *args):
         log("WEB", fmt % args)
