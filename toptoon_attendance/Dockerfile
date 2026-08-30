@@ -1,4 +1,4 @@
-FROM ghcr.io/home-assistant/base:lastest
+FROM ghcr.io/home-assistant/base:latest
 RUN apk add --no-cache python3 py3-pip tzdata \
     && python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir requests
