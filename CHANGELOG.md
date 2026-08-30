@@ -1,7 +1,10 @@
 # Changelog
 
-## 0.4.3
-- App display name changed to `Toptoon Attendance Bot`.
-- Repository display name standardized to `KY Home Assistant Apps`.
-- Startup log now uses the same KST timestamp format as every other log line.
-- Retains automatic server-refreshed session-cookie preservation, Ingress renewal UI, retries, 09:05 failure check, and 21:00 manual reminder.
+## 0.5.0
+- Major authentication redesign: persistent Chromium profile replaces PHPSESSID/rm_session manual storage.
+- Added Ingress control/status dashboard and VNC login-renewal browser.
+- Attendance POST runs in the authenticated browser context.
+- Retained 00:30 schedule, retries, 09:05 failure recheck/mobile alert, and 21:00 manual reminder.
+- Added success mobile notification option.
+- Added red-circle white-KY `icon.png` and `logo.png` to the app package.
+- All app logs use KST timestamps.

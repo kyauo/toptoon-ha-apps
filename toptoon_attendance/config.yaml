@@ -1,6 +1,6 @@
 name: "Toptoon Attendance Bot"
-description: "Automatically checks in to Toptoon, retries failures, provides an Ingress session-renewal UI, and notifies Home Assistant."
-version: "0.4.3"
+description: "Automatically checks in to Toptoon with a persistent Chromium login session, retries failures, and notifies Home Assistant."
+version: "0.5.0"
 slug: "toptoon_attendance"
 init: false
 startup: application
@@ -11,13 +11,13 @@ arch:
 homeassistant_api: true
 ingress: true
 ingress_port: 8099
+ingress_entry: "/"
+ingress_stream: true
 panel_icon: "mdi:calendar-check"
 panel_title: "Toptoon Attendance"
 panel_admin: true
 
 options:
-  phpsessid: ""
-  rm_session: ""
   run_time: "00:30"
   timezone: "Asia/Seoul"
   retry_1_minutes: 5
@@ -27,11 +27,10 @@ options:
   mobile_notify_entity: "notify.ky17"
   run_on_start: false
   notify_on_failure: true
+  notify_on_success: true
   notify_manual_reminder: true
 
 schema:
-  phpsessid: password
-  rm_session: password
   run_time: "match(^([01][0-9]|2[0-3]):[0-5][0-9]$)"
   timezone: str
   retry_1_minutes: "int(1,180)"
@@ -41,4 +40,5 @@ schema:
   mobile_notify_entity: str
   run_on_start: bool
   notify_on_failure: bool
+  notify_on_success: bool
   notify_manual_reminder: bool

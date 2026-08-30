@@ -1,565 +1,166 @@
-import html
-import json
-import os
-import threading
-import time
+import html, json, os, threading, time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 from zoneinfo import ZoneInfo
-
 import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
 
-OPTIONS_PATH = Path("/data/options.json")
-STATUS_PATH = Path("/data/status.json")
-SESSION_PATH = Path("/data/session.json")
-TOPTOON_URL = "https://toptoon.com/event/attendance"
-PERSISTENT_NOTIFICATION_ID = "toptoon_attendance_failure"
-WEB_PORT = 8099
-INGRESS_PROXY_IP = "172.30.32.2"
+OPTIONS_PATH=Path('/data/options.json'); STATUS_PATH=Path('/data/status.json')
+PAGE_URL='https://toptoon.com/event/attendance'; WEB_PORT=8098
+PERSISTENT_NOTIFICATION_ID='toptoon_attendance_failure'; OK_STATES={'success','already_done'}
+BROWSER_LOCK=threading.Lock()
 
-HEADERS = {
-    "Accept": "application/json, text/javascript, */*; q=0.01",
-    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    "X-Requested-With": "XMLHttpRequest",
-    "Origin": "https://toptoon.com",
-    "Referer": "https://toptoon.com/event/attendance",
-    "User-Agent": "Mozilla/5.0 Toptoon-HA/0.4.3",
-}
-DATA = {"ci_token": "null"}
-OK_STATES = {"success", "already_done"}
-ATTENDANCE_LOCK = threading.Lock()
+def load_json(p,d):
+    try:return json.loads(p.read_text(encoding='utf-8'))
+    except Exception:return d
 
-
-def log(level, message):
+def save_json(p,d):
+    t=p.with_suffix(p.suffix+'.tmp'); t.write_text(json.dumps(d,ensure_ascii=False,indent=2),encoding='utf-8'); t.replace(p)
+def load_options(): return load_json(OPTIONS_PATH,{})
+def save_status(**u): s=load_json(STATUS_PATH,{}); s.update(u); save_json(STATUS_PATH,s)
+def now_local(o=None):
+    o=o or load_options(); return datetime.now(ZoneInfo(o.get('timezone','Asia/Seoul')))
+def log(level,msg):
+    try: stamp=now_local().strftime('%Y-%m-%d %H:%M:%S %Z')
+    except Exception: stamp=datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')
+    print(f'[{stamp}] [{level}] {msg}',flush=True)
+def fmt_time(v):
+    if not v:return '-'
+    try:return datetime.fromisoformat(v).astimezone(ZoneInfo(load_options().get('timezone','Asia/Seoul'))).strftime('%Y-%m-%d %H:%M:%S %Z')
+    except Exception:return str(v)
+def ha_service(domain,service,payload):
+    token=os.environ.get('SUPERVISOR_TOKEN')
+    if not token:return False
     try:
-        stamp = now_local().strftime("%Y-%m-%d %H:%M:%S %Z")
-    except Exception:
-        stamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    print(f"[{stamp}] [{level}] {message}", flush=True)
-
-
-def load_json(path, default):
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return default
-
-
-def save_json(path, data):
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
-
-
-def load_options():
-    return load_json(OPTIONS_PATH, {})
-
-
-def load_status():
-    return load_json(STATUS_PATH, {})
-
-
-def save_status(**updates):
-    status = load_status()
-    status.update(updates)
-    save_json(STATUS_PATH, status)
-
-
-def now_local(options=None):
-    options = options or load_options()
-    tz = ZoneInfo(options.get("timezone", "Asia/Seoul"))
-    return datetime.now(tz)
-
-
-def current_cookies(options=None):
-    options = options or load_options()
-    session = load_json(SESSION_PATH, {})
-    return {
-        "PHPSESSID": session.get("phpsessid") or options.get("phpsessid", ""),
-        "rm_session": session.get("rm_session") or options.get("rm_session", ""),
-    }
-
-
-def persist_session_from_http(session_obj, sent_cookies, options=None):
-    """Persist Toptoon session cookies if the server rotated them."""
-    options = options or load_options()
-    rotated = {}
-    for cookie in session_obj.cookies:
-        if cookie.name in ("PHPSESSID", "rm_session") and cookie.value:
-            rotated[cookie.name] = cookie.value
-
-    changed = []
-    for name in ("PHPSESSID", "rm_session"):
-        if rotated.get(name) and rotated[name] != sent_cookies.get(name, ""):
-            changed.append(name)
-
-    if not changed:
-        return False
-
-    previous = load_json(SESSION_PATH, {})
-    updated_at = now_local(options).isoformat(timespec="seconds")
-    save_json(SESSION_PATH, {
-        "phpsessid": rotated.get("PHPSESSID") or sent_cookies.get("PHPSESSID", ""),
-        "rm_session": rotated.get("rm_session") or sent_cookies.get("rm_session", ""),
-        "updated_at": updated_at,
-        "source": "toptoon_response",
-        "manual_updated_at": previous.get("manual_updated_at"),
-    })
-    save_status(session_updated_at=updated_at)
-    log("INFO", f"Toptoon refreshed session cookie(s): {', '.join(changed)}.")
-    return True
-
-
-def ha_service(domain, service, payload):
-    token = os.environ.get("SUPERVISOR_TOKEN")
-    if not token:
-        log("WARNING", "SUPERVISOR_TOKEN is missing.")
-        return False
-    url = f"http://supervisor/core/api/services/{domain}/{service}"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=10)
-        r.raise_for_status()
-        return True
-    except Exception as e:
-        log("WARNING", f"Home Assistant service call failed: {e}")
-        return False
-
-
-def persistent_failure(message):
-    if ha_service("persistent_notification", "create", {
-        "notification_id": PERSISTENT_NOTIFICATION_ID,
-        "title": "Toptoon 출석 실패",
-        "message": message,
-    }):
-        log("INFO", "Persistent failure notification created.")
-
-
-def dismiss_persistent_failure():
-    ha_service("persistent_notification", "dismiss", {
-        "notification_id": PERSISTENT_NOTIFICATION_ID
-    })
-
-
-def mobile_push(entity_id, title, message):
-    payload = {"entity_id": entity_id, "message": message, "title": title}
-    if ha_service("notify", "send_message", payload):
-        log("INFO", f"Mobile notification sent to {entity_id}.")
-
-
-def check_attendance(options=None):
-    options = options or load_options()
-    cookies = current_cookies(options)
-    if not cookies["PHPSESSID"] or not cookies["rm_session"]:
-        return "missing_session", "PHPSESSID 또는 rm_session이 없습니다."
-
-    try:
-        with ATTENDANCE_LOCK:
-            with requests.Session() as http:
-                http.cookies.update(cookies)
-                r = http.post(
-                    TOPTOON_URL,
-                    headers=HEADERS,
-                    data=DATA,
-                    timeout=20,
-                )
-                persist_session_from_http(http, cookies, options)
-        log("INFO", f"Toptoon HTTP {r.status_code}")
-        r.raise_for_status()
-    except requests.RequestException as e:
-        return "network_error", str(e)
-
-    try:
-        body = r.json()
-    except ValueError:
-        return "invalid_response", f"JSON이 아닌 응답: {r.text[:300]}"
-
-    if body.get("result") is True:
-        return "success", body.get("message") or "출석 완료"
-
-    message = str(body.get("message") or "")
-    if "이미 출석" in message:
-        return "already_done", message
-    if body.get("errorType") == "login":
-        return "login_expired", message or "로그인이 만료되었습니다."
-    return "failed", message or json.dumps(body, ensure_ascii=False)[:300]
-
-
-def store_session(phpsessid, rm_session, source="manual_ingress"):
-    phpsessid = str(phpsessid or "").strip()
-    rm_session = str(rm_session or "").strip()
-    if len(phpsessid) < 5 or len(rm_session) < 5:
-        return False, "두 세션 값을 모두 입력해 주세요."
-
-    updated_at = now_local().isoformat(timespec="seconds")
-    save_json(SESSION_PATH, {
-        "phpsessid": phpsessid,
-        "rm_session": rm_session,
-        "updated_at": updated_at,
-        "manual_updated_at": updated_at,
-        "source": source,
-    })
-    save_status(session_updated_at=updated_at)
-    log("INFO", "Session updated manually through Ingress.")
-    return True, updated_at
-
-
-def test_after_session_update():
-    state, message = check_attendance(load_options())
-    checked_at = now_local().isoformat(timespec="seconds")
-    updates = {
-        "last_result": state,
-        "last_message": message,
-        "session_tested_at": checked_at,
-    }
-    if state in OK_STATES:
-        updates.update({
-            "last_run_date": now_local().date().isoformat(),
-            "unresolved": False,
-            "failure_date": None,
-            "mobile_notified": False,
-        })
-        dismiss_persistent_failure()
-    save_status(**updates)
-    return state, message
-
-
-def failure_instruction():
-    return (
-        "Home Assistant에서 Toptoon Attendance 앱의 웹 UI를 열고 "
-        "새 PHPSESSID와 rm_session 값을 저장해 주세요. 저장 즉시 출석 상태를 다시 확인합니다."
-    )
-
-
-def run_with_retries(options, now):
-    r1 = int(options.get("retry_1_minutes", 5))
-    r2 = int(options.get("retry_2_minutes", 15))
-    delays = [0, r1 * 60, max(0, (r2 - r1) * 60)]
-    last_state, last_message = None, ""
-
-    for attempt, delay in enumerate(delays):
-        if delay:
-            log("WARNING", f"Attempt failed ({last_state}); retry {attempt} in {delay // 60} minutes.")
-            time.sleep(delay)
-
-        options = load_options()
-        check_time = now_local(options)
-        log("INFO", "Checking attendance.")
-        last_state, last_message = check_attendance(options)
-
-        if last_state in OK_STATES:
-            log("INFO", f"Attendance OK: {last_state} / {last_message}")
-            dismiss_persistent_failure()
-            save_status(
-                last_run_date=check_time.date().isoformat(),
-                last_result=last_state,
-                last_message=last_message,
-                unresolved=False,
-                failure_date=None,
-                mobile_notified=False,
-            )
-            return
-
-    log("ERROR", f"Attendance failed after retries: {last_state}")
-    if options.get("notify_on_failure", True):
-        persistent_failure(
-            "자동 출석과 재시도가 모두 실패했습니다.\n"
-            f"상태: {last_state}\n내용: {last_message}\n\n{failure_instruction()}"
-        )
-    save_status(
-        last_run_date=now.date().isoformat(),
-        last_result=last_state,
-        last_message=last_message,
-        unresolved=True,
-        failure_date=now.date().isoformat(),
-        mobile_notified=False,
-    )
-
-
-def morning_recheck_and_notify(options, now):
-    status = load_status()
-    today = now.date().isoformat()
-    if not status.get("unresolved") or status.get("failure_date") != today:
-        return
-    if status.get("mobile_notified"):
-        return
-
-    log("INFO", "Morning check: rechecking unresolved attendance failure.")
-    state, message = check_attendance(options)
-    if state in OK_STATES:
-        log("INFO", f"Morning recheck recovered: {state}")
-        dismiss_persistent_failure()
-        save_status(
-            last_result=state,
-            last_message=message,
-            unresolved=False,
-            failure_date=None,
-            mobile_notified=False,
-        )
-        return
-
-    persistent_failure(
-        "09:05 재확인에서도 Toptoon 출석이 실패했습니다.\n"
-        f"상태: {state}\n내용: {message}\n\n{failure_instruction()}"
-    )
-    mobile_push(
-        options.get("mobile_notify_entity", "notify.ky17"),
-        "Toptoon 출석 실패",
-        "09:05 재확인에서도 출석하지 못했습니다. HA의 Toptoon Attendance 웹 UI에서 세션을 갱신해 주세요.",
-    )
-    save_status(last_result=state, last_message=message, mobile_notified=True)
-
-
-
-def send_manual_reminder_if_needed(options, now):
-    """At the daily deadline, remind the user if today's attendance has not been confirmed."""
-    if not options.get("notify_manual_reminder", True):
-        return
-    today = now.date().isoformat()
-    status = load_status()
-    if status.get("manual_reminder_date") == today:
-        return
-    if status.get("last_run_date") == today and status.get("last_result") in OK_STATES:
-        save_status(manual_reminder_date=today)
-        log("INFO", "21:00 manual reminder skipped: today's Toptoon attendance is already confirmed.")
-        return
-
-    last_result = result_label(status.get("last_result"))
-    last_message = status.get("last_message") or "오늘 성공 기록이 없습니다."
-    mobile_push(
-        options.get("mobile_notify_entity", "notify.ky17"),
-        "Toptoon 출석 확인 필요",
-        f"21:00까지 오늘 Toptoon 출석 성공이 확인되지 않았습니다. 직접 출석하거나 HA의 Toptoon Attendance 웹 UI에서 세션 상태를 확인해 주세요.\n마지막 상태: {last_result} / {last_message}",
-    )
-    save_status(manual_reminder_date=today)
-    log("WARNING", "21:00 manual attendance reminder sent: no confirmed success for today.")
-
-
-def within_minute(now, hhmm):
-    hour, minute = [int(x) for x in hhmm.split(":")]
-    return now.hour == hour and now.minute == minute
-
-
-def result_label(state):
-    return {
-        "success": "출석 성공",
-        "already_done": "이미 출석 완료",
-        "login_expired": "로그인 만료",
-        "missing_session": "세션 없음",
-        "network_error": "네트워크 오류",
-        "invalid_response": "응답 오류",
-        "failed": "실패",
-    }.get(state, state or "기록 없음")
-
-
-def display_time(value):
-    if not value or value == "-":
-        return "-"
-    try:
-        tz = ZoneInfo(load_options().get("timezone", "Asia/Seoul"))
-        dt = datetime.fromisoformat(str(value))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=tz)
-        else:
-            dt = dt.astimezone(tz)
-        return dt.strftime("%Y-%m-%d %H:%M:%S %Z")
-    except Exception:
-        return str(value)
-
-
-def page_html(flash=None, flash_kind="info"):
-    status = load_status()
-    session = load_json(SESSION_PATH, {})
-    has_session = bool(session.get("phpsessid") and session.get("rm_session"))
-    updated_at = display_time(session.get("updated_at")) if has_session else "아직 저장된 세션 없음"
-    last_result = result_label(status.get("last_result"))
-    last_message = status.get("last_message") or "아직 실행 기록 없음"
-    tested_at = display_time(status.get("session_tested_at"))
-    flash_block = ""
-    if flash:
-        flash_block = f'<div class="flash {html.escape(flash_kind)}">{html.escape(flash)}</div>'
-
-    state = status.get("last_result")
-    if not has_session:
-        intro = "최초 설정입니다. Toptoon 로그인 세션 두 값을 한 번 저장하면 이후 자동 출석은 Home Assistant가 담당합니다."
-    elif state in OK_STATES:
-        intro = "세션이 등록되어 있고 최근 확인도 정상입니다. 평소에는 아래 값을 다시 입력할 필요가 없으며, 로그인 만료 알림을 받았을 때만 갱신하세요."
-    else:
-        intro = "세션이 등록되어 있습니다. 자동 출석은 기존 일정대로 동작하며, 로그인 만료 알림을 받았을 때만 아래 두 값을 새로 저장하면 됩니다."
-
-    return f"""<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Toptoon Attendance</title>
-<style>
-:root {{ color-scheme: light dark; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }}
-body {{ margin:0; padding:24px; background:var(--primary-background-color,#fafafa); color:var(--primary-text-color,#222); }}
-main {{ max-width:680px; margin:0 auto; position:relative; }}
-.card {{ background:var(--card-background-color,#fff); border-radius:14px; padding:20px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,.08); }}
-h1 {{ font-size:24px; margin:0 42px 8px 0; }}
-h2 {{ font-size:18px; margin:0 0 12px; }}
-p {{ line-height:1.55; }}
-.close-btn {{ position:absolute; top:8px; right:8px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:50%; text-decoration:none; color:inherit; font-size:30px; line-height:1; font-weight:300; background:rgba(128,128,128,.13); z-index:2; }}
-.close-btn:hover {{ background:rgba(128,128,128,.23); }}
-label {{ display:block; font-weight:600; margin:14px 0 6px; }}
-input {{ box-sizing:border-box; width:100%; padding:12px; border:1px solid #8888; border-radius:9px; font:inherit; }}
-button {{ width:100%; margin-top:18px; padding:13px; border:0; border-radius:9px; font:inherit; font-weight:700; cursor:pointer; background:#03a9f4; color:white; }}
-.meta {{ display:grid; grid-template-columns:150px 1fr; gap:8px 12px; font-size:14px; }}
-.meta strong {{ font-weight:650; }}
-.flash {{ padding:13px; border-radius:9px; margin-bottom:16px; font-weight:600; }}
-.flash.ok {{ background:#2e7d3230; }}
-.flash.error {{ background:#c6282830; }}
-.flash.info {{ background:#1565c030; }}
-.note {{ font-size:13px; opacity:.78; }}
-.status-ok {{ font-weight:700; }}
-@media (max-width:520px) {{ body {{ padding:12px; }} .meta {{ grid-template-columns:1fr; }} .close-btn {{ top:4px; right:4px; }} }}
-</style>
-</head>
-<body><main>
-<a class="close-btn" href="/" target="_top" aria-label="닫기" title="닫기">&times;</a>
-<div class="card">
-<h1>Toptoon Attendance</h1>
-<p>{html.escape(intro)}</p>
-</div>
-{flash_block}
-<div class="card">
-<h2>현재 상태</h2>
-<div class="meta">
-<strong>세션 갱신 시각</strong><span>{html.escape(str(updated_at))}</span>
-<strong>최근 결과</strong><span class="{'status-ok' if state in OK_STATES else ''}">{html.escape(str(last_result))}</span>
-<strong>최근 메시지</strong><span>{html.escape(str(last_message))}</span>
-<strong>수동 갱신 테스트</strong><span>{html.escape(str(tested_at))}</span>
-</div>
-</div>
-<div class="card">
-<h2>{'로그인 세션 갱신' if has_session else '최초 로그인 세션 등록'}</h2>
-<form method="post" action="">
-<label for="phpsessid">PHPSESSID</label>
-<input id="phpsessid" name="phpsessid" type="password" autocomplete="off" required>
-<label for="rm_session">rm_session</label>
-<input id="rm_session" name="rm_session" type="password" autocomplete="off" required>
-<button type="submit">저장하고 즉시 출석 확인</button>
-</form>
-<p class="note">정상 운영 중에는 입력할 필요가 없습니다. 값은 Home Assistant App의 /data/session.json에만 저장되며 화면과 로그에는 표시하지 않습니다.</p>
-</div>
-<div class="card">
-<h2>갱신 방법</h2>
-<p>Toptoon 로그인 세션이 완전히 만료된 경우에만 브라우저의 쿠키 관리 화면에서 PHPSESSID와 rm_session 값을 복사해 위 칸에 붙여 넣으세요. 저장하면 이 App이 즉시 출석 요청을 보내 새 세션이 유효한지 확인합니다. Toptoon이 이후 응답에서 세션 쿠키를 갱신하면 App이 새 값을 자동으로 보존합니다.</p>
-</div>
-</main></body></html>"""
-
-
-class IngressHandler(BaseHTTPRequestHandler):
-    server_version = "ToptoonAttendance/0.4.3"
-
-    def log_message(self, fmt, *args):
-        log("WEB", fmt % args)
-
-    def ingress_only(self):
-        # Home Assistant Ingress proxy is the intended and only entry point.
-        # When the runtime reports another source IP, reject direct access.
-        client_ip = self.client_address[0]
-        if client_ip != INGRESS_PROXY_IP:
-            log("WARNING", f"Rejected non-Ingress web request from {client_ip}.")
-            self.send_response(403)
-            self.end_headers()
-            return False
-        return True
-
-    def send_page(self, content, status=200):
-        body = content.encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_GET(self):
-        if not self.ingress_only():
-            return
-        self.send_page(page_html())
-
+        r=requests.post(f'http://supervisor/core/api/services/{domain}/{service}',headers={'Authorization':f'Bearer {token}','Content-Type':'application/json'},json=payload,timeout=10); r.raise_for_status(); return True
+    except Exception as e: log('WARNING',f'Home Assistant service call failed: {e}'); return False
+def mobile_push(entity,title,message):
+    if ha_service('notify','send_message',{'entity_id':entity,'title':title,'message':message}): log('INFO',f'Mobile notification sent to {entity}: {title}')
+def persistent_failure(msg):
+    if ha_service('persistent_notification','create',{'notification_id':PERSISTENT_NOTIFICATION_ID,'title':'Toptoon 출석 실패','message':msg}): log('INFO','Persistent failure notification created.')
+def dismiss_failure(): ha_service('persistent_notification','dismiss',{'notification_id':PERSISTENT_NOTIFICATION_ID})
+
+def browser_driver():
+    opts=Options(); opts.add_experimental_option('debuggerAddress','127.0.0.1:9222'); opts.binary_location='/usr/bin/chromium-browser'
+    return webdriver.Chrome(service=Service('/usr/bin/chromedriver'),options=opts)
+def page_text(d):
+    try:return d.find_element(By.TAG_NAME,'body').text
+    except Exception:return ''
+def is_login_required(d):
+    u=d.current_url.lower(); body=page_text(d).lower()
+    return ('login' in u or 'member/login' in u or '로그인' in body and ('facebook' in body or '페이스북' in body))
+
+def inspect_page():
+    with BROWSER_LOCK:
+        try:
+            d=browser_driver(); d.get(PAGE_URL); WebDriverWait(d,25).until(lambda x:x.execute_script("return document.readyState") in ('interactive','complete')); time.sleep(3)
+            if is_login_required(d): state,msg='login_required','Toptoon 로그인이 필요합니다. 로그인 브라우저를 열어 로그인해 주세요.'
+            else: state,msg='logged_in','Toptoon 로그인 세션이 유지되고 있습니다.'
+            save_status(login_state=state,login_message=msg,status_checked_at=now_local().isoformat(timespec='seconds'))
+            log('INFO',f'Status check: {state} / {msg}'); return state,msg
+        except Exception as e:
+            msg=str(e)[:400]; save_status(login_state='browser_error',login_message=msg,status_checked_at=now_local().isoformat(timespec='seconds')); log('WARNING',f'Status check failed: {msg}'); return 'browser_error',msg
+
+def check_attendance():
+    with BROWSER_LOCK:
+        try:
+            d=browser_driver(); d.get(PAGE_URL); WebDriverWait(d,25).until(lambda x:x.execute_script("return document.readyState") in ('interactive','complete')); time.sleep(3)
+            if is_login_required(d): return 'login_required','Toptoon 로그인이 필요합니다. 로그인 브라우저를 열어 로그인해 주세요.'
+            # Run the site's attendance POST inside the real logged-in browser context.
+            result=d.execute_async_script("""
+const done=arguments[arguments.length-1];
+fetch('/event/attendance',{method:'POST',credentials:'include',headers:{'Accept':'application/json, text/javascript, */*; q=0.01','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest'},body:'ci_token=null'})
+.then(async r=>{let t=await r.text(); let j=null; try{j=JSON.parse(t)}catch(e){} done({ok:r.ok,status:r.status,json:j,text:t.slice(0,400)});})
+.catch(e=>done({error:String(e)}));
+""")
+            if result.get('error'): return 'network_error',result['error']
+            body=result.get('json')
+            if not isinstance(body,dict): return 'invalid_response',f"HTTP {result.get('status')}: {result.get('text','')}"
+            msg=str(body.get('message') or '')
+            if body.get('result') is True:return 'success',msg or '출석 완료'
+            if '이미 출석' in msg:return 'already_done',msg
+            if body.get('errorType')=='login':return 'login_required',msg or '로그인이 만료되었습니다.'
+            return 'failed',msg or json.dumps(body,ensure_ascii=False)[:300]
+        except Exception as e:return 'browser_error',str(e)[:400]
+
+def record_result(state,msg,manual=False):
+    n=now_local(); u={'last_run_at':n.isoformat(timespec='seconds'),'last_result':state,'last_message':msg}
+    if manual:u['manual_run_at']=n.isoformat(timespec='seconds')
+    if state in OK_STATES:u.update(last_run_date=n.date().isoformat(),unresolved=False,failure_date=None,mobile_notified=False,today_status='출석 완료')
+    save_status(**u)
+def success_notification(o,state):
+    if o.get('notify_on_success',True): mobile_push(o.get('mobile_notify_entity','notify.ky17'),'Toptoon 출석 완료','오늘 Toptoon 출석이 정상 확인되었습니다.' if state=='success' else '오늘 Toptoon은 이미 출석 완료 상태입니다.')
+def failure_instruction(): return 'Home Assistant에서 Toptoon Attendance Bot을 열어 로그인 상태를 확인해 주세요. 로그인이 풀린 경우에만 로그인 브라우저를 열어 Toptoon에 다시 로그인하면 됩니다.'
+def manual_attendance():
+    log('INFO','Manual attendance test requested from Ingress UI.'); s,m=check_attendance(); record_result(s,m,True)
+    if s in OK_STATES:dismiss_failure(); log('INFO',f'Manual attendance OK: {s} / {m}')
+    else:log('WARNING',f'Manual attendance failed: {s} / {m}')
+    return s,m
+def run_with_retries(o):
+    r1=int(o.get('retry_1_minutes',5)); r2=int(o.get('retry_2_minutes',15)); delays=[0,r1*60,max(0,(r2-r1)*60)]; s=None;m=''
+    for i,delay in enumerate(delays):
+        if delay:log('WARNING',f'Attempt failed ({s}); retry {i} in {delay//60} minutes.'); time.sleep(delay)
+        log('INFO','Checking Toptoon daily attendance.'); s,m=check_attendance(); record_result(s,m)
+        if s in OK_STATES: log('INFO',f'Toptoon attendance OK: {s} / {m}'); dismiss_failure(); success_notification(o,s); return True
+        log('WARNING',f'Toptoon attendance failed: {s} / {m}')
+    save_status(unresolved=True,failure_date=now_local(o).date().isoformat(),mobile_notified=False)
+    if o.get('notify_on_failure',True):persistent_failure(f'{s}: {m}\n\n{failure_instruction()}')
+    return False
+def manual_reminder(o,n):
+    if not o.get('notify_manual_reminder',True):return
+    today=n.date().isoformat(); st=load_json(STATUS_PATH,{})
+    if st.get('manual_reminder_date')==today:return
+    if st.get('last_run_date')==today and st.get('last_result') in OK_STATES:save_status(manual_reminder_date=today); log('INFO',"21:00 manual reminder skipped: today's Toptoon attendance is confirmed."); return
+    mobile_push(o.get('mobile_notify_entity','notify.ky17'),'Toptoon 출석 확인 필요',f"21:00까지 오늘 Toptoon 출석 성공이 확인되지 않았습니다. 직접 출석을 확인해 주세요.\n마지막 상태: {st.get('last_result','기록 없음')} / {st.get('last_message','오늘 성공 기록이 없습니다.')}")
+    save_status(manual_reminder_date=today); log('WARNING','21:00 manual attendance reminder sent.')
+
+def render_ui(message='',kind=''):
+    st=load_json(STATUS_PATH,{}); o=load_options(); ls=st.get('login_state'); badge=('good','로그인 유지됨') if ls=='logged_in' else (('bad','로그인 필요') if ls=='login_required' else ('neutral','아직 확인 안 함'))
+    alert=f'<div class="{("okmsg" if kind=="ok" else "warnmsg")}">{html.escape(message)}</div>' if message else ''
+    return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Toptoon Attendance Bot</title><style>
+:root{{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}body{{margin:0;background:#f4f5f7;color:#202124}}.wrap{{max-width:720px;margin:0 auto;padding:20px;position:relative}}.card{{background:white;border-radius:16px;padding:20px;box-shadow:0 2px 10px #0001;margin-bottom:16px}}h1{{font-size:24px;margin:0 36px 6px 0}}p{{line-height:1.55}}.close{{position:absolute;right:25px;top:22px;border:0;background:transparent;font-size:28px;cursor:pointer;color:#666}}.badge{{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;font-size:13px}}.good{{background:#e8f5e9;color:#1b5e20}}.bad{{background:#ffebee;color:#b71c1c}}.neutral{{background:#eceff1;color:#455a64}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}}.item{{border:1px solid #e5e7eb;border-radius:12px;padding:13px}}.label{{color:#6b7280;font-size:12px}}.value{{font-size:17px;font-weight:700;margin-top:4px}}.actions{{display:grid;gap:10px}}button,.btn{{width:100%;box-sizing:border-box;border:0;border-radius:11px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:block}}button:disabled{{opacity:.65;cursor:wait}}.primary{{background:#e53935;color:white}}.secondary{{background:#e8eaed;color:#202124}}.danger{{background:#fff3e0;color:#bf360c}}.busy{{display:none;margin-top:12px;border-radius:10px;padding:12px;background:#e3f2fd;color:#0d47a1;font-weight:700}}.note{{color:#5f6368;font-size:13px}}.okmsg,.warnmsg{{border-radius:10px;padding:12px;margin:12px 0}}.okmsg{{background:#e8f5e9}}.warnmsg{{background:#fff3e0}}@media(prefers-color-scheme:dark){{body{{background:#111827;color:#f3f4f6}}.card{{background:#1f2937}}.item{{border-color:#374151}}.secondary{{background:#374151;color:#f3f4f6}}.note,.label{{color:#9ca3af}}.close{{color:#d1d5db}}}}</style></head><body><div class="wrap">
+<button class="close" onclick="try{{window.parent.location.href='/'}}catch(e){{history.back()}}">×</button><div class="card"><h1>Toptoon Attendance Bot</h1><p>평소에는 이 화면에서 상태만 확인하면 됩니다. <b>로그인 브라우저는 Toptoon 로그인이 풀렸을 때만</b> 열어 주세요. 브라우저 프로필은 앱 재시작 후에도 유지됩니다.</p>{alert}<span class="badge {badge[0]}">{badge[1]}</span><div class="grid"><div class="item"><div class="label">오늘 출석</div><div class="value">{html.escape(str(st.get('today_status','아직 확인 안 함')))}</div></div><div class="item"><div class="label">마지막 상태 확인</div><div class="value" style="font-size:13px">{html.escape(fmt_time(st.get('status_checked_at')))}</div></div></div></div>
+<div class="card"><div class="actions"><button id="checkBtn" class="primary" onclick="runAction('check',this)">지금 로그인 상태 확인</button><button id="attBtn" class="danger" onclick="if(confirm('오늘 미출석이면 실제 출석 요청을 실행합니다. 계속할까요?'))runAction('attendance',this)">지금 출석 테스트</button><a id="vncBtn" class="btn secondary" href="vnc/vnc.html?autoconnect=1&amp;resize=scale&amp;path=vnc/websockify">로그인 브라우저 열기</a></div><div id="busy" class="busy">처리 중... 잠시 기다려 주세요.</div><p class="note">로그인을 마치면 브라우저를 그냥 닫아도 됩니다. 로그인 상태는 /data/chromium-profile에 보존됩니다.</p></div>
+<div class="card"><b>자동 실행</b><p class="note">매일 {o.get('run_time','00:30')} ({o.get('timezone','Asia/Seoul')}) · 재시도 +{o.get('retry_1_minutes',5)}분 / +{o.get('retry_2_minutes',15)}분 · 실패 확인 {o.get('mobile_alert_time','09:05')} · 수동 확인 알림 {o.get('manual_reminder_time','21:00')}</p><div class="label">마지막 출석 실행</div><div>{html.escape(fmt_time(st.get('last_run_at')))}</div><div class="label" style="margin-top:10px">마지막 결과</div><div><b>{html.escape(str(st.get('last_result','아직 없음')))}</b> {html.escape(str(st.get('last_message','')))}</div></div></div>
+<script>async function runAction(a,b){{let c=document.getElementById('checkBtn'),d=document.getElementById('attBtn'),v=document.getElementById('vncBtn'),x=document.getElementById('busy');c.disabled=d.disabled=true;v.style.pointerEvents='none';v.style.opacity='.6';x.style.display='block';b.textContent=a==='attendance'?'출석 처리 중...':'상태 확인 중...';let done=false;let w=setTimeout(()=>{{if(!done)location.reload()}},60000);let ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),55000);try{{let q=new URLSearchParams();q.set('do',a);q.set('ajax','1');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'}},body:q,signal:ctl.signal,cache:'no-store'}});await r.json();done=true;clearTimeout(w);clearTimeout(t);setTimeout(()=>location.reload(),350)}}catch(e){{done=true;clearTimeout(w);clearTimeout(t);setTimeout(()=>location.reload(),700)}}}}</script></body></html>'''
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self,*a):return
+    def sendx(self,obj,json_mode=False,status=200):
+        data=(json.dumps(obj,ensure_ascii=False) if json_mode else obj).encode(); self.send_response(status); self.send_header('Content-Type','application/json; charset=utf-8' if json_mode else 'text/html; charset=utf-8'); self.send_header('Cache-Control','no-store'); self.send_header('Content-Length',str(len(data))); self.end_headers(); self.wfile.write(data)
+    def do_GET(self):self.sendx(render_ui() if self.path.split('?',1)[0] in ('/','') else render_ui('알 수 없는 경로입니다.','warn'))
     def do_POST(self):
-        if not self.ingress_only():
-            return
-        length = int(self.headers.get("Content-Length", "0") or 0)
-        if length <= 0 or length > 16384:
-            self.send_page(page_html("잘못된 요청입니다.", "error"), 400)
-            return
-        raw = self.rfile.read(length).decode("utf-8", "replace")
-        form = parse_qs(raw, keep_blank_values=True)
-        phpsessid = (form.get("phpsessid") or [""])[0]
-        rm_session = (form.get("rm_session") or [""])[0]
-
-        ok, detail = store_session(phpsessid, rm_session)
-        if not ok:
-            self.send_page(page_html(detail, "error"), 400)
-            return
-
-        state, message = test_after_session_update()
-        if state in OK_STATES:
-            flash = f"세션 저장 완료. 즉시 확인 결과: {result_label(state)} — {message}"
-            kind = "ok"
-        else:
-            flash = f"세션은 저장했지만 즉시 확인에 실패했습니다: {result_label(state)} — {message}"
-            kind = "error"
-        self.send_page(page_html(flash, kind))
-
-
-def start_web_server():
-    server = ThreadingHTTPServer(("0.0.0.0", WEB_PORT), IngressHandler)
-    thread = threading.Thread(target=server.serve_forever, name="ingress-web", daemon=True)
-    thread.start()
-    log("INFO", f"Ingress session-renewal UI listening on port {WEB_PORT}.")
-    return server
-
+        if self.path.split('?',1)[0]!='/action':return self.sendx({'ok':False,'message':'bad request'},True,404)
+        p=parse_qs(self.rfile.read(int(self.headers.get('Content-Length','0') or 0)).decode()); a=p.get('do',[''])[0]
+        if a=='check':s,m=inspect_page(); ok=s=='logged_in'
+        elif a=='attendance':s,m=manual_attendance(); ok=s in OK_STATES
+        else:return self.sendx({'ok':False,'message':'unsupported'},True,400)
+        self.sendx({'ok':ok,'state':s,'message':m},True)
+def start_ui():
+    srv=ThreadingHTTPServer(('127.0.0.1',WEB_PORT),Handler); threading.Thread(target=srv.serve_forever,daemon=True).start(); log('INFO','Ingress control UI listening behind nginx on port 8099.')
+def at_time(n,t):return n.strftime('%H:%M')==t
 
 def main():
-    options = load_options()
-    start_web_server()
-    log(
-        "INFO",
-        f"Daily attendance: {options.get('run_time','00:30')} "
-        f"({options.get('timezone','Asia/Seoul')}); "
-        f"retries +{options.get('retry_1_minutes',5)}m/+{options.get('retry_2_minutes',15)}m; "
-        f"mobile alert check: {options.get('mobile_alert_time','09:05')}; "
-        f"manual reminder: {options.get('manual_reminder_time','21:00')}"
-    )
-    log("INFO", "Manual session renewal is available through Home Assistant Ingress.")
-
-    if options.get("run_on_start", False):
-        run_with_retries(options, now_local(options))
-
+    o=load_options(); log('INFO','Starting Toptoon Attendance Bot...'); log('INFO','Persistent Chromium profile: /data/chromium-profile'); log('INFO','Ingress opens the control/status UI. VNC is reserved for login renewal.'); log('INFO',f"Daily attendance: {o.get('run_time','00:30')} ({o.get('timezone','Asia/Seoul')}); retries +{o.get('retry_1_minutes',5)}m/+{o.get('retry_2_minutes',15)}m; mobile alert check: {o.get('mobile_alert_time','09:05')}; manual reminder: {o.get('manual_reminder_time','21:00')}"); start_ui()
+    if o.get('run_on_start',False):run_with_retries(o)
+    last=None
     while True:
-        options = load_options()
-        now = now_local(options)
-        today = now.date().isoformat()
-        status = load_status()
-
-        if within_minute(now, options.get("run_time", "00:30")):
-            if status.get("last_run_date") != today:
-                run_with_retries(options, now)
-
-        status = load_status()
-        if within_minute(now, options.get("mobile_alert_time", "09:05")):
-            if status.get("morning_check_date") != today:
-                morning_recheck_and_notify(options, now)
-                save_status(morning_check_date=today)
-
-        status = load_status()
-        if within_minute(now, options.get("manual_reminder_time", "21:00")):
-            if status.get("manual_reminder_date") != today:
-                send_manual_reminder_if_needed(options, now)
-
-        time.sleep(1)
-
-
-if __name__ == "__main__":
-    main()
+        o=load_options(); n=now_local(o); key=n.strftime('%Y-%m-%d %H:%M'); today=n.date().isoformat()
+        if key!=last:
+            last=key; st=load_json(STATUS_PATH,{})
+            if at_time(n,o.get('run_time','00:30')) and st.get('last_run_date')!=today:run_with_retries(o)
+            st=load_json(STATUS_PATH,{})
+            if at_time(n,o.get('mobile_alert_time','09:05')) and st.get('unresolved') and st.get('failure_date')==today and not st.get('mobile_notified'):
+                log('INFO','Morning unresolved-failure recheck.'); s,m=check_attendance(); record_result(s,m)
+                if s in OK_STATES:dismiss_failure(); success_notification(o,s)
+                else:mobile_push(o.get('mobile_notify_entity','notify.ky17'),'Toptoon 출석 실패',f'{s}: {m}\n{failure_instruction()}'); save_status(mobile_notified=True)
+            st=load_json(STATUS_PATH,{})
+            if at_time(n,o.get('manual_reminder_time','21:00')) and st.get('manual_reminder_date')!=today:manual_reminder(o,n)
+        time.sleep(5)
+if __name__=='__main__':main()

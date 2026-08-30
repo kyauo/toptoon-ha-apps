@@ -1,25 +1,13 @@
-# Toptoon Attendance 0.4.3
+# Toptoon Attendance Bot v0.5.0
 
-Home Assistant App for scheduled Toptoon attendance.
+Persistent-Chromium based Toptoon attendance automation for Home Assistant.
 
-## v0.4.3
+## v0.5.0
+- Replaces manual PHPSESSID/rm_session management with a persistent Chromium profile.
+- Login only through the Ingress VNC browser when Toptoon login expires.
+- Daily attendance is executed inside the real logged-in browser context.
+- Fast Ingress control/status UI with login check and manual attendance test.
+- Existing retry, 09:05 failure alert, 21:00 manual reminder and mobile notifications retained.
+- Includes KY red-circle icon and logo assets.
 
-- Adds KST/local-time timestamps to every App log line.
-- Displays saved/test times in the Ingress UI as readable local time instead of raw ISO strings.
-- Clarifies that session entry is an initial setup / expired-login recovery step, not a daily task.
-- Automatically preserves refreshed `PHPSESSID` / `rm_session` values returned by Toptoon. Cookie values are never printed to logs.
-- Adds an **X close button** to both the input and result screens. It returns to the Home Assistant root view.
-- Keeps the v0.4.0 automatic schedule, retries, failure notifications, and immediate session validation.
-
-## Normal operation
-
-1. Enter `PHPSESSID` and `rm_session` once and press **저장하고 즉시 출석 확인**.
-2. Home Assistant performs the scheduled attendance automatically.
-3. If Toptoon rotates either session cookie in an HTTP response, the App updates `/data/session.json` automatically.
-4. Re-enter the two values only if Toptoon reports that the login is fully expired.
-
-Never put real cookie values in GitHub.
-
-
-### 21:00 safety reminder
-If today's attendance has not been confirmed by `manual_reminder_time` (default 21:00), the App sends one mobile reminder so you can check Toptoon manually before the day ends.
+After upgrading, open the Web UI, choose **로그인 브라우저 열기**, sign in to Toptoon once, then close the browser. The profile remains under `/data/chromium-profile`.
