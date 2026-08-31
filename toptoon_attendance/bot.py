@@ -231,41 +231,60 @@ def prepare_facebook_login():
         except Exception as e:
             log('WARNING',f'Login assist prepare failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}'); return 'browser_error',f'로그인 준비 실패: {type(e).__name__}'
 
+def _verify_login_after_submit():
+    """Verify Toptoon login without touching the slow Facebook renderer."""
+    delays=(4,6,8,10)
+    for delay in delays:
+        time.sleep(delay)
+        try:
+            with BROWSER_LOCK:
+                d=browser_driver()
+                state,msg=_toptoon_auth_probe_http(d)
+            log('INFO',f'Login assist: post-submit Toptoon auth probe -> {state}.')
+            if state=='logged_in':
+                save_status(login_state='logged_in',login_message='Toptoon 서버에서 로그인 성공을 확인했습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+                return
+        except Exception as e:
+            log('WARNING',f'Login assist: background auth probe failed: {type(e).__name__}: {str(e)[:160]}')
+    save_status(login_state='verification_needed',login_message='Facebook 로그인 제출 후 Toptoon 인증이 아직 확인되지 않았습니다. 추가 인증 화면이 있는지 확인해 주세요.',status_checked_at=now_local().isoformat(timespec='seconds'))
+    log('WARNING','Login assist: Toptoon login was not confirmed after background verification window.')
+
 def submit_facebook_login(user,password):
     if not user or not password:return 'input_required','ID와 비밀번호를 모두 입력해 주세요.'
     with BROWSER_LOCK:
         t0=time.monotonic()
         try:
             d=browser_driver(); _switch_latest_window(d)
-            log('INFO','Login assist: submitting transient Facebook credentials (values are not logged or stored).')
-            def first_visible(selectors):
-                for by,val in selectors:
-                    for e in d.find_elements(by,val):
-                        if e.is_displayed() and e.is_enabled():return e
-                return None
-            u=first_visible([(By.ID,'email'),(By.NAME,'email'),(By.CSS_SELECTOR,"input[type='email']"),(By.CSS_SELECTOR,"input[name*='user']")])
-            pw=first_visible([(By.ID,'pass'),(By.NAME,'pass'),(By.CSS_SELECTOR,"input[type='password']")])
-            if not u or not pw:return 'fields_not_found','Facebook ID/비밀번호 입력칸을 찾지 못했습니다. 보안 확인 화면이면 VNC가 필요합니다.'
-            u.click(); u.clear(); u.send_keys(user); pw.click(); pw.clear(); pw.send_keys(password)
-            btn=first_visible([(By.NAME,'login'),(By.CSS_SELECTOR,"button[type='submit']"),(By.CSS_SELECTOR,"input[type='submit']")])
-            if not btn:return 'submit_not_found','Facebook 로그인 버튼을 찾지 못했습니다.'
-            d.execute_script("arguments[0].click();",btn)
-            # Wait for Facebook form to disappear or navigation; do not wait indefinitely on challenge pages.
-            end=time.monotonic()+25
-            while time.monotonic()<end:
-                time.sleep(1); _switch_latest_window(d)
-                url=d.current_url.lower()
-                if 'toptoon.com' in url:break
-                if not d.find_elements(By.CSS_SELECTOR,"input[type='password']"):break
-            url=d.current_url
-            log('INFO',f'Login assist: submit completed after {time.monotonic()-t0:.1f}s; current URL={url[:160]}')
-            if 'toptoon.com' in url.lower():
-                try:d.get(PAGE_URL); time.sleep(2)
-                except Exception:pass
-                if not is_login_required(d):
-                    save_status(login_state='logged_in',login_message='Toptoon 로그인 세션이 유지되고 있습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-                    return 'logged_in','로그인 성공을 확인했습니다. 이제 자동 출석에 이 브라우저 세션을 사용합니다.'
-            return 'verification_needed','로그인 제출은 완료했습니다. Facebook 추가 인증 또는 확인 화면이 남아 있을 수 있습니다. 상태 확인을 눌러 확인하고, 필요한 경우에만 VNC를 여세요.'
+            log('INFO','Login assist: submitting transient Facebook credentials with one CDP renderer call (values are not logged or stored).')
+            script="""(() => {
+  const pick = (sels) => sels.map(s => document.querySelector(s)).find(Boolean);
+  const u = pick(["#email","input[name=email]","input[type=email]","input[name*=user]"]);
+  const p = pick(["#pass","input[name=pass]","input[type=password]"]);
+  const b = pick(["button[name=login]","button[type=submit]","input[type=submit]"]);
+  if (!u || !p) return {ok:false, reason:"fields_not_found"};
+  const setv = (el,v) => {
+    const proto = Object.getPrototypeOf(el);
+    const desc = Object.getOwnPropertyDescriptor(proto,"value") || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value");
+    if (desc && desc.set) desc.set.call(el,v); else el.value=v;
+    el.dispatchEvent(new Event("input",{bubbles:true}));
+    el.dispatchEvent(new Event("change",{bubbles:true}));
+  };
+  setv(u, USER_VALUE); setv(p, PASS_VALUE);
+  if (!b) return {ok:false, reason:"submit_not_found"};
+  b.click();
+  return {ok:true, reason:"submitted"};
+})()""".replace('USER_VALUE',json.dumps(user)).replace('PASS_VALUE',json.dumps(password))
+            result=d.execute_cdp_cmd('Runtime.evaluate',{'expression':script,'returnByValue':True,'awaitPromise':False,'userGesture':True})
+            value=((result.get('result') or {}).get('value') or {}) if isinstance(result,dict) else {}
+            if not value.get('ok'):
+                reason=value.get('reason','renderer_error')
+                if reason=='fields_not_found':return 'fields_not_found','Facebook ID/비밀번호 입력칸을 찾지 못했습니다. 보안 확인 화면이면 VNC가 필요합니다.'
+                if reason=='submit_not_found':return 'submit_not_found','Facebook 로그인 버튼을 찾지 못했습니다.'
+                return 'browser_error',f'Facebook 로그인 제출 준비 실패: {reason}'
+            log('INFO',f'Login assist: Facebook submit command accepted after {time.monotonic()-t0:.1f}s; verification continues in background.')
+            save_status(login_state='verifying',login_message='Facebook 로그인 제출 완료. Toptoon 로그인 여부를 백그라운드에서 확인 중입니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+            threading.Thread(target=_verify_login_after_submit,daemon=True).start()
+            return 'verifying','Facebook 로그인 제출 완료. Toptoon 로그인 여부를 백그라운드에서 확인합니다.'
         except Exception as e:
             log('WARNING',f'Login assist submit failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}')
             return 'browser_error',f'로그인 제출 실패: {type(e).__name__}'

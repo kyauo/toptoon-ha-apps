@@ -1,5 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.10
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.11
 
-GitHub 저장소의 `toptoon_attendance` 폴더를 이 번들 내용으로 교체한 뒤 Home Assistant App Store를 새로고침하고 v0.5.10로 업데이트하세요.
-
-이번 버전은 느린 로그인 준비 경로를 재작성하고, Toptoon 서버 AJAX 응답을 로그인 상태 판정의 기준으로 사용합니다.
+v0.5.11은 Facebook 로그인 제출 단계의 느린 Selenium DOM 반복 호출을 제거하고, 단일 CDP 제출 + 백그라운드 Toptoon 인증 확인 방식으로 변경한 버전입니다.
