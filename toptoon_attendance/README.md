@@ -1,8 +1,8 @@
-# Toptoon Attendance Bot v0.5.0
+# Toptoon Attendance Bot v0.5.1
 
 Persistent-Chromium based Toptoon attendance automation for Home Assistant.
 
-## v0.5.0
+## v0.5.1
 - Replaces manual PHPSESSID/rm_session management with a persistent Chromium profile.
 - Login only through the Ingress VNC browser when Toptoon login expires.
 - Daily attendance is executed inside the real logged-in browser context.
