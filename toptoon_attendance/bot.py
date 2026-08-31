@@ -10,6 +10,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 
 OPTIONS_PATH=Path('/data/options.json'); STATUS_PATH=Path('/data/status.json')
 PAGE_URL='https://toptoon.com/event/attendance'; WEB_PORT=8098
@@ -126,9 +128,81 @@ def render_ui(message='',kind=''):
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Toptoon Attendance Bot</title><style>
 :root{{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}body{{margin:0;background:#f4f5f7;color:#202124}}.wrap{{max-width:720px;margin:0 auto;padding:20px;position:relative}}.card{{background:white;border-radius:16px;padding:20px;box-shadow:0 2px 10px #0001;margin-bottom:16px}}h1{{font-size:24px;margin:0 36px 6px 0}}p{{line-height:1.55}}.close{{position:absolute;right:25px;top:22px;border:0;background:transparent;font-size:28px;cursor:pointer;color:#666}}.badge{{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;font-size:13px}}.good{{background:#e8f5e9;color:#1b5e20}}.bad{{background:#ffebee;color:#b71c1c}}.neutral{{background:#eceff1;color:#455a64}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}}.item{{border:1px solid #e5e7eb;border-radius:12px;padding:13px}}.label{{color:#6b7280;font-size:12px}}.value{{font-size:17px;font-weight:700;margin-top:4px}}.actions{{display:grid;gap:10px}}button,.btn{{width:100%;box-sizing:border-box;border:0;border-radius:11px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:block}}button:disabled{{opacity:.65;cursor:wait}}.primary{{background:#e53935;color:white}}.secondary{{background:#e8eaed;color:#202124}}.danger{{background:#fff3e0;color:#bf360c}}.busy{{display:none;margin-top:12px;border-radius:10px;padding:12px;background:#e3f2fd;color:#0d47a1;font-weight:700}}.note{{color:#5f6368;font-size:13px}}.okmsg,.warnmsg{{border-radius:10px;padding:12px;margin:12px 0}}.okmsg{{background:#e8f5e9}}.warnmsg{{background:#fff3e0}}@media(prefers-color-scheme:dark){{body{{background:#111827;color:#f3f4f6}}.card{{background:#1f2937}}.item{{border-color:#374151}}.secondary{{background:#374151;color:#f3f4f6}}.note,.label{{color:#9ca3af}}.close{{color:#d1d5db}}}}</style></head><body><div class="wrap">
 <button class="close" onclick="try{{window.parent.location.href='/'}}catch(e){{history.back()}}">×</button><div class="card"><h1>Toptoon Attendance Bot</h1><p>평소에는 이 화면에서 상태만 확인하면 됩니다. <b>로그인 브라우저는 Toptoon 로그인이 풀렸을 때만</b> 열어 주세요. 브라우저 프로필은 앱 재시작 후에도 유지됩니다.</p>{alert}<span class="badge {badge[0]}">{badge[1]}</span><div class="grid"><div class="item"><div class="label">오늘 출석</div><div class="value">{html.escape(str(st.get('today_status','아직 확인 안 함')))}</div></div><div class="item"><div class="label">마지막 상태 확인</div><div class="value" style="font-size:13px">{html.escape(fmt_time(st.get('status_checked_at')))}</div></div></div></div>
+<div class="card"><b>빠른 Facebook 로그인</b><p class="note">VNC 화면을 기다리지 않고 Selenium이 로그인 페이지를 직접 조작합니다. 먼저 준비 버튼을 누른 뒤 ID와 비밀번호를 입력하세요. 비밀번호는 저장하거나 로그에 남기지 않습니다.</p><div class="actions"><button class="secondary" id="prepBtn" onclick="loginPrepare(this)">Facebook 로그인 화면 준비</button></div><div style="display:grid;gap:8px;margin-top:10px"><input id="fbid" autocomplete="username" placeholder="Facebook ID" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><input id="fbpw" type="password" autocomplete="current-password" placeholder="Facebook 비밀번호" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><button class="primary" id="loginBtn" onclick="loginSubmit(this)">Facebook 로그인 제출</button><div id="loginMsg" class="note"></div></div></div>
 <div class="card"><div class="actions"><button id="checkBtn" class="primary" onclick="runAction('check',this)">지금 로그인 상태 확인</button><button id="attBtn" class="danger" onclick="if(confirm('오늘 미출석이면 실제 출석 요청을 실행합니다. 계속할까요?'))runAction('attendance',this)">지금 출석 테스트</button><a id="vncBtn" class="btn secondary" href="login-console">로그인 브라우저 열기</a></div><div id="busy" class="busy">처리 중... 잠시 기다려 주세요.</div><p class="note">로그인을 마치면 브라우저를 그냥 닫아도 됩니다. 로그인 상태는 /data/chromium-profile에 보존됩니다.</p></div>
 <div class="card"><b>자동 실행</b><p class="note">매일 {o.get('run_time','00:30')} ({o.get('timezone','Asia/Seoul')}) · 재시도 +{o.get('retry_1_minutes',5)}분 / +{o.get('retry_2_minutes',15)}분 · 실패 확인 {o.get('mobile_alert_time','09:05')} · 수동 확인 알림 {o.get('manual_reminder_time','21:00')}</p><div class="label">마지막 출석 실행</div><div>{html.escape(fmt_time(st.get('last_run_at')))}</div><div class="label" style="margin-top:10px">마지막 결과</div><div><b>{html.escape(str(st.get('last_result','아직 없음')))}</b> {html.escape(str(st.get('last_message','')))}</div></div></div>
-<script>async function runAction(a,b){{let c=document.getElementById('checkBtn'),d=document.getElementById('attBtn'),v=document.getElementById('vncBtn'),x=document.getElementById('busy');c.disabled=d.disabled=true;v.style.pointerEvents='none';v.style.opacity='.6';x.style.display='block';b.textContent=a==='attendance'?'출석 처리 중...':'상태 확인 중...';let done=false;let w=setTimeout(()=>{{if(!done)location.reload()}},60000);let ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),55000);try{{let q=new URLSearchParams();q.set('do',a);q.set('ajax','1');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'}},body:q,signal:ctl.signal,cache:'no-store'}});await r.json();done=true;clearTimeout(w);clearTimeout(t);setTimeout(()=>location.reload(),350)}}catch(e){{done=true;clearTimeout(w);clearTimeout(t);setTimeout(()=>location.reload(),700)}}}}</script></body></html>'''
+<script>async function postLogin(doit,extra={{}}){{let q=new URLSearchParams();q.set('do',doit);for(const [k,v] of Object.entries(extra))q.set(k,v);let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store'}});return await r.json()}}async function loginPrepare(b){{let m=document.getElementById('loginMsg');b.disabled=true;m.textContent='Facebook 로그인 화면 준비 중...';try{{let j=await postLogin('login_prepare');m.textContent=j.message||j.state}}catch(e){{m.textContent='로그인 화면 준비 요청 실패'}}finally{{b.disabled=false}}}}async function loginSubmit(b){{let m=document.getElementById('loginMsg'),u=document.getElementById('fbid'),p=document.getElementById('fbpw');if(!u.value||!p.value){{m.textContent='ID와 비밀번호를 모두 입력해 주세요.';return}}b.disabled=true;m.textContent='로그인 제출 중...';try{{let j=await postLogin('login_submit',{{user:u.value,password:p.value}});p.value='';m.textContent=j.message||j.state;if(j.state==='logged_in')setTimeout(()=>location.reload(),800)}}catch(e){{p.value='';m.textContent='로그인 제출 요청 실패'}}finally{{b.disabled=false}}}}async function runAction(a,b){{let c=document.getElementById('checkBtn'),d=document.getElementById('attBtn'),v=document.getElementById('vncBtn'),x=document.getElementById('busy');c.disabled=d.disabled=true;v.style.pointerEvents='none';v.style.opacity='.6';x.style.display='block';b.textContent=a==='attendance'?'출석 처리 중...':'상태 확인 중...';let done=false;let w=setTimeout(()=>{{if(!done)location.reload()}},60000);let ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),55000);try{{let q=new URLSearchParams();q.set('do',a);q.set('ajax','1');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'}},body:q,signal:ctl.signal,cache:'no-store'}});await r.json();done=true;clearTimeout(w);clearTimeout(t);setTimeout(()=>location.reload(),350)}}catch(e){{done=true;clearTimeout(w);clearTimeout(t);setTimeout(()=>location.reload(),700)}}}}</script></body></html>'''
+
+
+def _switch_latest_window(d):
+    try:
+        if len(d.window_handles)>1: d.switch_to.window(d.window_handles[-1])
+    except Exception: pass
+
+def prepare_facebook_login():
+    """Navigate and click Facebook login via DOM; VNC is not required for normal login."""
+    with BROWSER_LOCK:
+        t0=time.monotonic()
+        try:
+            d=browser_driver(); d.set_page_load_timeout(35)
+            log('INFO','Login assist: opening Toptoon attendance page.')
+            try:d.get(PAGE_URL)
+            except Exception as e:log('WARNING',f'Login assist: page load timeout/interrupt after {time.monotonic()-t0:.1f}s: {type(e).__name__}')
+            log('INFO',f'Login assist: Toptoon navigation reached {d.current_url} after {time.monotonic()-t0:.1f}s.')
+            if not is_login_required(d): return 'logged_in','이미 Toptoon 로그인 상태입니다.'
+            # Prefer visible elements containing Facebook text, then common href/class patterns.
+            candidates=d.find_elements(By.XPATH,"//*[self::a or self::button or @role='button'][contains(translate(normalize-space(.),'FACEBOOK','facebook'),'facebook') or contains(normalize-space(.),'페이스북')]")
+            if not candidates:
+                candidates=d.find_elements(By.CSS_SELECTOR,"a[href*='facebook'], [class*='facebook'], [class*='Facebook']")
+            target=next((e for e in candidates if e.is_displayed() and e.is_enabled()),None)
+            if not target:return 'facebook_button_not_found','Toptoon 로그인 화면은 열렸지만 Facebook 로그인 버튼을 찾지 못했습니다. 이 경우에만 VNC를 사용해 주세요.'
+            before=set(d.window_handles); d.execute_script("arguments[0].click();",target)
+            WebDriverWait(d,15).until(lambda x: len(x.window_handles)>len(before) or 'facebook' in x.current_url.lower() or x.current_url!=PAGE_URL)
+            _switch_latest_window(d); time.sleep(1)
+            log('INFO',f'Login assist: Facebook login page reached after {time.monotonic()-t0:.1f}s: {d.current_url[:160]}')
+            return 'facebook_ready','Facebook 로그인 화면을 준비했습니다. 아래에서 ID와 비밀번호를 입력하세요.'
+        except Exception as e:
+            log('WARNING',f'Login assist prepare failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}')
+            return 'browser_error',f'로그인 준비 실패: {type(e).__name__}'
+
+def submit_facebook_login(user,password):
+    if not user or not password:return 'input_required','ID와 비밀번호를 모두 입력해 주세요.'
+    with BROWSER_LOCK:
+        t0=time.monotonic()
+        try:
+            d=browser_driver(); _switch_latest_window(d)
+            log('INFO','Login assist: submitting transient Facebook credentials (values are not logged or stored).')
+            def first_visible(selectors):
+                for by,val in selectors:
+                    for e in d.find_elements(by,val):
+                        if e.is_displayed() and e.is_enabled():return e
+                return None
+            u=first_visible([(By.ID,'email'),(By.NAME,'email'),(By.CSS_SELECTOR,"input[type='email']"),(By.CSS_SELECTOR,"input[name*='user']")])
+            pw=first_visible([(By.ID,'pass'),(By.NAME,'pass'),(By.CSS_SELECTOR,"input[type='password']")])
+            if not u or not pw:return 'fields_not_found','Facebook ID/비밀번호 입력칸을 찾지 못했습니다. 보안 확인 화면이면 VNC가 필요합니다.'
+            u.click(); u.clear(); u.send_keys(user); pw.click(); pw.clear(); pw.send_keys(password)
+            btn=first_visible([(By.NAME,'login'),(By.CSS_SELECTOR,"button[type='submit']"),(By.CSS_SELECTOR,"input[type='submit']")])
+            if not btn:return 'submit_not_found','Facebook 로그인 버튼을 찾지 못했습니다.'
+            d.execute_script("arguments[0].click();",btn)
+            # Wait for Facebook form to disappear or navigation; do not wait indefinitely on challenge pages.
+            end=time.monotonic()+25
+            while time.monotonic()<end:
+                time.sleep(1); _switch_latest_window(d)
+                url=d.current_url.lower()
+                if 'toptoon.com' in url:break
+                if not d.find_elements(By.CSS_SELECTOR,"input[type='password']"):break
+            url=d.current_url
+            log('INFO',f'Login assist: submit completed after {time.monotonic()-t0:.1f}s; current URL={url[:160]}')
+            if 'toptoon.com' in url.lower():
+                try:d.get(PAGE_URL); time.sleep(2)
+                except Exception:pass
+                if not is_login_required(d):
+                    save_status(login_state='logged_in',login_message='Toptoon 로그인 세션이 유지되고 있습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+                    return 'logged_in','로그인 성공을 확인했습니다. 이제 자동 출석에 이 브라우저 세션을 사용합니다.'
+            return 'verification_needed','로그인 제출은 완료했습니다. Facebook 추가 인증 또는 확인 화면이 남아 있을 수 있습니다. 상태 확인을 눌러 확인하고, 필요한 경우에만 VNC를 여세요.'
+        except Exception as e:
+            log('WARNING',f'Login assist submit failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}')
+            return 'browser_error',f'로그인 제출 실패: {type(e).__name__}'
 
 def clear_x_clipboard_later(delay=8):
     def _clear():
@@ -180,7 +254,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path.split('?',1)[0]!='/action':return self.sendx({'ok':False,'message':'bad request'},True,404)
         p=parse_qs(self.rfile.read(int(self.headers.get('Content-Length','0') or 0)).decode()); a=p.get('do',[''])[0]
-        if a=='check':s,m=inspect_page(); ok=s=='logged_in'
+        if a=='login_prepare':s,m=prepare_facebook_login(); ok=s in ('facebook_ready','logged_in')
+        elif a=='login_submit':s,m=submit_facebook_login(p.get('user',[''])[0],p.get('password',[''])[0]); ok=s=='logged_in'
+        elif a=='check':s,m=inspect_page(); ok=s=='logged_in'
         elif a=='attendance':s,m=manual_attendance(); ok=s in OK_STATES
         elif a=='paste':
             ok,m=paste_into_browser(p.get('text',[''])[0]); return self.sendx({'ok':ok,'message':m},True,200 if ok else 400)
