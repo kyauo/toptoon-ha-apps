@@ -68,6 +68,9 @@ chromium-browser \
   --disable-dev-shm-usage \
   --disable-gpu \
   --disable-background-networking \
+  --disable-background-timer-throttling \
+  --disable-backgrounding-occluded-windows \
+  --disable-renderer-backgrounding \
   --disable-component-update \
   --disable-features=Translate,OptimizationHints,SmoothScrolling \
   --wm-window-animations-disabled \
@@ -77,7 +80,7 @@ chromium-browser \
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port=9222 \
   --window-size=1024,720 \
-  "https://toptoon.com/event/attendance" \
+  "about:blank" \
   >/tmp/chromium.log 2>&1 &
 CHROME_PID=$!
 if ! wait_port 9222 "Chromium remote debugging" 30; then dump_log "Chromium" /tmp/chromium.log; exit 1; fi
