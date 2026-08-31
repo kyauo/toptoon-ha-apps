@@ -49,7 +49,7 @@ def persistent_failure(msg):
 def dismiss_failure(): ha_service('persistent_notification','dismiss',{'notification_id':PERSISTENT_NOTIFICATION_ID})
 
 def browser_driver():
-    opts=Options(); opts.add_experimental_option('debuggerAddress','127.0.0.1:9222'); opts.binary_location='/usr/bin/chromium-browser'
+    opts=Options(); opts.page_load_strategy='eager'; opts.add_experimental_option('debuggerAddress','127.0.0.1:9222'); opts.binary_location='/usr/bin/chromium-browser'
     return webdriver.Chrome(service=Service('/usr/bin/chromedriver'),options=opts)
 def page_text(d):
     try:return d.find_element(By.TAG_NAME,'body').text
@@ -70,16 +70,41 @@ def inspect_page():
             msg=str(e)[:400]; save_status(login_state='browser_error',login_message=msg,status_checked_at=now_local().isoformat(timespec='seconds')); log('WARNING',f'Status check failed: {msg}'); return 'browser_error',msg
 
 def check_attendance():
+    # v0.5.6: use the already-running persistent Chromium profile end-to-end.
+    # Do not create a requests.Session and do not maintain a second auth state.
     with BROWSER_LOCK:
+        t0=time.monotonic()
         try:
-            d=browser_driver(); d.get(PAGE_URL); WebDriverWait(d,25).until(lambda x:x.execute_script("return document.readyState") in ('interactive','complete')); time.sleep(3)
-            if is_login_required(d): return 'login_required','Toptoon 로그인이 필요합니다. 로그인 브라우저를 열어 로그인해 주세요.'
-            # Run the site's attendance POST inside the real logged-in browser context.
+            d=browser_driver(); d.set_page_load_timeout(30)
+            log('INFO','Attendance: using persistent Chromium session on 127.0.0.1:9222.')
+            try:
+                d.get(PAGE_URL)
+            except TimeoutException:
+                try:d.execute_script('window.stop();')
+                except Exception:pass
+                log('WARNING',f'Attendance: page load interrupted after {time.monotonic()-t0:.1f}s; continuing with loaded DOM.')
+            WebDriverWait(d,12).until(lambda x: 'toptoon.com' in x.current_url.lower())
+            # Give the site's own scripts a short bounded window, not an unconditional long sleep.
+            try:WebDriverWait(d,8).until(lambda x: x.execute_script("return document.readyState") in ('interactive','complete'))
+            except Exception:pass
+            log('INFO',f'Attendance: Toptoon context ready after {time.monotonic()-t0:.1f}s.')
+
+            # Execute from the Toptoon document itself so the browser supplies the persistent
+            # profile's cookies and same-origin credentials.  Resolve ci_token from the page
+            # when present, otherwise preserve the previously verified null behavior.
             result=d.execute_async_script("""
 const done=arguments[arguments.length-1];
-fetch('/event/attendance',{method:'POST',credentials:'include',headers:{'Accept':'application/json, text/javascript, */*; q=0.01','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest'},body:'ci_token=null'})
-.then(async r=>{let t=await r.text(); let j=null; try{j=JSON.parse(t)}catch(e){} done({ok:r.ok,status:r.status,json:j,text:t.slice(0,400)});})
-.catch(e=>done({error:String(e)}));
+const el=document.querySelector('input[name="ci_token"], meta[name="ci_token"]');
+let token=null;
+if(el) token=(el.value || el.content || null);
+const body='ci_token='+encodeURIComponent(token===null ? 'null' : token);
+fetch('/event/attendance',{method:'POST',credentials:'include',cache:'no-store',headers:{
+ 'Accept':'application/json, text/javascript, */*; q=0.01',
+ 'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
+ 'X-Requested-With':'XMLHttpRequest'
+},body})
+.then(async r=>{let t=await r.text();let j=null;try{j=JSON.parse(t)}catch(e){};done({ok:r.ok,status:r.status,json:j,text:t.slice(0,400),url:location.href});})
+.catch(e=>done({error:String(e),url:location.href}));
 """)
             if result.get('error'): return 'network_error',result['error']
             body=result.get('json')
@@ -87,14 +112,28 @@ fetch('/event/attendance',{method:'POST',credentials:'include',headers:{'Accept'
             msg=str(body.get('message') or '')
             if body.get('result') is True:return 'success',msg or '출석 완료'
             if '이미 출석' in msg:return 'already_done',msg
-            if body.get('errorType')=='login':return 'login_required',msg or '로그인이 만료되었습니다.'
+            if body.get('errorType')=='login':
+                # The AJAX endpoint is authoritative.  Update login status too, so the UI can
+                # no longer say 'logged in' while attendance says login_required.
+                save_status(login_state='login_required',login_message=msg or 'Toptoon AJAX 세션에서 로그인이 확인되지 않았습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+                return 'login_required',msg or '로그인이 만료되었습니다.'
             return 'failed',msg or json.dumps(body,ensure_ascii=False)[:300]
-        except Exception as e:return 'browser_error',str(e)[:400]
+        except Exception as e:
+            return 'browser_error',str(e)[:400]
 
 def record_result(state,msg,manual=False):
     n=now_local(); u={'last_run_at':n.isoformat(timespec='seconds'),'last_result':state,'last_message':msg}
     if manual:u['manual_run_at']=n.isoformat(timespec='seconds')
-    if state in OK_STATES:u.update(last_run_date=n.date().isoformat(),unresolved=False,failure_date=None,mobile_notified=False,today_status='출석 완료')
+    if state in OK_STATES:
+        u.update(last_run_date=n.date().isoformat(),unresolved=False,failure_date=None,mobile_notified=False,today_status='출석 완료' if state=='success' else '이미 출석 완료')
+    elif state=='login_required':
+        u.update(today_status='실패: 로그인 필요')
+    elif state=='browser_error':
+        u.update(today_status='실패: 브라우저 오류')
+    elif state=='network_error':
+        u.update(today_status='실패: 네트워크 오류')
+    else:
+        u.update(today_status='실패: '+(msg[:60] if msg else state))
     save_status(**u)
 def success_notification(o,state):
     if o.get('notify_on_success',True): mobile_push(o.get('mobile_notify_entity','notify.ky17'),'Toptoon 출석 완료','오늘 Toptoon 출석이 정상 확인되었습니다.' if state=='success' else '오늘 Toptoon은 이미 출석 완료 상태입니다.')
