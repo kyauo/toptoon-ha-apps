@@ -54,7 +54,7 @@ dump_log() {
 }
 
 log INFO "Launching Xvfb display :99..."
-Xvfb :99 -screen 0 1280x900x24 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
+Xvfb :99 -screen 0 1024x720x16 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
 XVFB_PID=$!
 sleep 1
 if ! kill -0 "$XVFB_PID" 2>/dev/null; then dump_log "Xvfb" /tmp/xvfb.log; exit 1; fi
@@ -69,21 +69,21 @@ chromium-browser \
   --disable-gpu \
   --disable-background-networking \
   --disable-component-update \
-  --disable-features=Translate,OptimizationHints \
+  --disable-features=Translate,OptimizationHints,SmoothScrolling \
+  --wm-window-animations-disabled \
   --no-first-run \
   --no-default-browser-check \
   --user-data-dir="$PROFILE_DIR" \
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port=9222 \
-  --window-size=1280,900 \
-  --start-maximized \
+  --window-size=1024,720 \
   "https://toptoon.com/event/attendance" \
   >/tmp/chromium.log 2>&1 &
 CHROME_PID=$!
 if ! wait_port 9222 "Chromium remote debugging" 30; then dump_log "Chromium" /tmp/chromium.log; exit 1; fi
 
 log INFO "Launching x11vnc..."
-x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 >/tmp/x11vnc.log 2>&1 &
+x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 -noxdamage -wait 5 -defer 5 >/tmp/x11vnc.log 2>&1 &
 VNC_PID=$!
 if ! wait_port 5900 "x11vnc" 20; then dump_log "x11vnc" /tmp/x11vnc.log; exit 1; fi
 

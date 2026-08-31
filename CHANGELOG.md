@@ -1,11 +1,9 @@
 # Changelog
 
-## 0.5.2
-- Fixed the noVNC WebSocket path behind Home Assistant Ingress.
-- Changed the login-browser link from `path=vnc/websockify` to `path=websockify`, allowing current noVNC to resolve the socket relative to `vnc.html` and preserve the dynamic Ingress prefix.
-- Kept the 0.5.1 readiness checks for Chromium, x11vnc, noVNC/websockify, control UI, and nginx.
-- Kept the persistent Chromium profile and KY icon/logo assets.
-
-## 0.5.1
-- Added service readiness diagnostics and explicit port checks.
-- Added direct noVNC/websockify startup diagnostics.
+## 0.5.3
+- Optimized the interactive login browser for low-bandwidth Home Assistant Ingress/noVNC use.
+- Reduced virtual display size from 1280x900x24 to 1024x720x16.
+- Disabled Chromium window animations and smooth scrolling.
+- Tuned x11vnc update behavior with `-noxdamage`, shorter wait/defer intervals.
+- Requested lower noVNC visual quality and stronger compression for the login-only VNC session.
+- Retains persistent Chromium profile, scheduler, retry logic, notifications, readiness diagnostics, and KY branding.

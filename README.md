@@ -1,7 +1,5 @@
-# Toptoon Attendance Bot v0.5.2
+# Toptoon Attendance Bot v0.5.3
 
-Home Assistant App bundle for the Toptoon Attendance Bot.
+Home Assistant App for automatic Toptoon attendance using a persistent Chromium login profile.
 
-This release fixes the noVNC WebSocket path used behind Home Assistant Ingress while keeping the persistent Chromium profile, scheduled attendance, retry logic, mobile notifications, and KY branding.
-
-Upload the contents of `toptoon_attendance/` over the existing app folder, refresh the Home Assistant App Store repository, and update the app.
+v0.5.3 focuses on making the one-time/login-renewal noVNC session substantially lighter and more responsive. The automated attendance path itself is unchanged.
