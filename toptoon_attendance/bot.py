@@ -98,58 +98,25 @@ def inspect_page():
             msg=str(e)[:400]; save_status(login_state='browser_error',login_message=msg,status_checked_at=now_local().isoformat(timespec='seconds')); log('WARNING',f'Status check failed: {msg}'); return 'browser_error',msg
 
 def check_attendance():
-    # v0.5.7: reuse the already-open Toptoon document whenever possible.
-    # The attendance POST itself is authoritative for both auth and attendance state.
     with BROWSER_LOCK:
         t0=time.monotonic()
         try:
-            d=browser_driver(); d.set_page_load_timeout(18); d.set_script_timeout(18)
-            log('INFO','Attendance: attached to persistent Chromium on 127.0.0.1:9222.')
-            current=d.current_url or ''
-            if 'toptoon.com' in current.lower():
-                log('INFO',f'Attendance: reusing current Toptoon document without reload: {current[:160]}')
-            else:
-                log('INFO',f'Attendance: current page is outside Toptoon ({current[:120]}); navigating once.')
-                nav0=time.monotonic()
-                try:d.get(PAGE_URL)
-                except TimeoutException:
-                    try:d.execute_script('window.stop();')
-                    except Exception:pass
-                    log('WARNING',f'Attendance: navigation bounded at {time.monotonic()-nav0:.1f}s; continuing with loaded DOM.')
-                if 'toptoon.com' not in (d.current_url or '').lower():
-                    return 'browser_error',f'Toptoon 문맥으로 이동하지 못했습니다: {d.current_url}'
-            log('INFO',f'Attendance: Toptoon context available after {time.monotonic()-t0:.1f}s.')
-            result=d.execute_async_script("""
-const done=arguments[arguments.length-1];
-const el=document.querySelector('input[name="ci_token"], meta[name="ci_token"]');
-let token=null;if(el) token=(el.value || el.content || null);
-const body='ci_token='+encodeURIComponent(token===null ? 'null' : token);
-const ctl=new AbortController(); const timer=setTimeout(()=>ctl.abort(),12000);
-fetch('/event/attendance',{method:'POST',credentials:'include',cache:'no-store',signal:ctl.signal,headers:{
- 'Accept':'application/json, text/javascript, */*; q=0.01',
- 'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
- 'X-Requested-With':'XMLHttpRequest'
-},body})
-.then(async r=>{clearTimeout(timer);let t=await r.text();let j=null;try{j=JSON.parse(t)}catch(e){};done({ok:r.ok,status:r.status,json:j,text:t.slice(0,400),url:location.href});})
-.catch(e=>{clearTimeout(timer);done({error:String(e),url:location.href});});
-""")
-            log('INFO',f'Attendance: AJAX returned after {time.monotonic()-t0:.1f}s.')
-            if result.get('error'): return 'network_error',result['error']
-            body=result.get('json')
-            if not isinstance(body,dict): return 'invalid_response',f"HTTP {result.get('status')}: {result.get('text','')}"
-            msg=str(body.get('message') or '')
-            if body.get('result') is True:
-                save_status(login_state='logged_in',login_message='Toptoon AJAX 세션에서 로그인이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-                return 'success',msg or '출석 완료'
+            d=browser_driver(); sess,cookies=_requests_from_browser(d)
+            log('INFO',f'Attendance: copied {len(cookies)} Toptoon cookies from persistent Chromium via CDP.')
+            r=sess.post('https://toptoon.com/event/attendance',data={'ci_token':'null'},headers={'Accept':'application/json, text/javascript, */*; q=0.01','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Origin':'https://toptoon.com','Referer':PAGE_URL},timeout=(5,12))
+            log('INFO',f'Attendance: direct AJAX returned HTTP {r.status_code} after {time.monotonic()-t0:.1f}s.')
+            try:body=r.json()
+            except Exception:return 'invalid_response',f'HTTP {r.status_code}: {r.text[:300]}'
+            msg=str(body.get('message') or '') if isinstance(body,dict) else ''
+            if isinstance(body,dict) and body.get('result') is True:
+                save_status(login_state='logged_in',login_message='Toptoon 서버에서 Chromium 쿠키 로그인이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds')); return 'success',msg or '출석 완료'
             if '이미 출석' in msg:
-                save_status(login_state='logged_in',login_message='Toptoon AJAX 세션에서 로그인이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-                return 'already_done',msg
-            if body.get('errorType')=='login':
-                save_status(login_state='login_required',login_message=msg or 'Toptoon AJAX 세션에서 로그인이 확인되지 않았습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-                return 'login_required',msg or '로그인이 만료되었습니다.'
+                save_status(login_state='logged_in',login_message='Toptoon 서버에서 Chromium 쿠키 로그인이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds')); return 'already_done',msg
+            if isinstance(body,dict) and body.get('errorType')=='login':
+                save_status(login_state='login_required',login_message=msg or 'Toptoon 로그인이 필요합니다.',status_checked_at=now_local().isoformat(timespec='seconds')); return 'login_required',msg or '로그인이 만료되었습니다.'
             return 'failed',msg or json.dumps(body,ensure_ascii=False)[:300]
-        except Exception as e:
-            return 'browser_error',str(e)[:400]
+        except requests.Timeout:return 'network_error','Toptoon 출석 HTTP 요청이 12초 안에 끝나지 않았습니다.'
+        except Exception as e:return 'browser_error',str(e)[:400]
 
 def record_result(state,msg,manual=False):
     n=now_local(); u={'last_run_at':n.isoformat(timespec='seconds'),'last_result':state,'last_message':msg}
@@ -208,121 +175,61 @@ def _switch_latest_window(d):
         if len(d.window_handles)>1: d.switch_to.window(d.window_handles[-1])
     except Exception: pass
 
-def _toptoon_auth_probe_ajax(d):
-    """Authoritative auth probe using Toptoon attendance AJAX in the existing Chromium context."""
-    d.set_script_timeout(15)
-    result=d.execute_async_script("""
-const done=arguments[arguments.length-1];
-const ctl=new AbortController(); const timer=setTimeout(()=>ctl.abort(),10000);
-fetch('/event/attendance',{method:'POST',credentials:'include',cache:'no-store',signal:ctl.signal,headers:{
- 'Accept':'application/json, text/javascript, */*; q=0.01',
- 'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
- 'X-Requested-With':'XMLHttpRequest'
-},body:'ci_token=null'})
-.then(async r=>{clearTimeout(timer);let t=await r.text();let j=null;try{j=JSON.parse(t)}catch(e){};done({ok:r.ok,status:r.status,json:j,text:t.slice(0,300),url:location.href});})
-.catch(e=>{clearTimeout(timer);done({error:String(e),url:location.href});});
-""")
-    body=result.get('json') if isinstance(result,dict) else None
-    if isinstance(body,dict):
-        msg=str(body.get('message') or '')
-        if body.get('result') is True or '이미 출석' in msg:
-            return 'logged_in', msg or 'Toptoon AJAX 세션에서 로그인이 확인되었습니다.'
-        if body.get('errorType')=='login':
-            return 'login_required', msg or '로그인이 필요합니다.'
-    if isinstance(result,dict) and result.get('error'):
-        return 'probe_error', result.get('error')
-    return 'unknown', ''
+def _browser_cookies_via_cdp(d):
+    data=d.execute_cdp_cmd('Network.getAllCookies', {})
+    cookies=data.get('cookies',[]) if isinstance(data,dict) else []
+    return [c for c in cookies if 'toptoon.com' in str(c.get('domain','')).lower()]
 
+def _requests_from_browser(d):
+    sess=requests.Session()
+    sess.headers.update({'User-Agent':'Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36','Accept-Language':'ko-KR,ko;q=0.9,en;q=0.8'})
+    cookies=_browser_cookies_via_cdp(d)
+    for c in cookies:
+        try:sess.cookies.set(c['name'],c.get('value',''),domain=c.get('domain') or '.toptoon.com',path=c.get('path') or '/')
+        except Exception:pass
+    return sess,cookies
+
+def _toptoon_auth_probe_http(d):
+    sess,cookies=_requests_from_browser(d); t=time.monotonic()
+    r=sess.post('https://toptoon.com/event/attendance',data={'ci_token':'null'},headers={'Accept':'application/json, text/javascript, */*; q=0.01','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Origin':'https://toptoon.com','Referer':PAGE_URL},timeout=(5,12))
+    log('INFO',f'Login assist: direct Toptoon auth probe returned HTTP {r.status_code} after {time.monotonic()-t:.1f}s using {len(cookies)} Toptoon cookies.')
+    try:body=r.json()
+    except Exception:return 'probe_error',f'HTTP {r.status_code}: {r.text[:180]}'
+    msg=str(body.get('message') or '') if isinstance(body,dict) else ''
+    if isinstance(body,dict) and (body.get('result') is True or '이미 출석' in msg):return 'logged_in',msg or 'Toptoon 세션에서 로그인이 확인되었습니다.'
+    if isinstance(body,dict) and body.get('errorType')=='login':return 'login_required',msg or '로그인이 필요합니다.'
+    return 'unknown',msg
+
+def _find_facebook_login_url():
+    import re
+    from urllib.parse import urljoin
+    try:
+        r=requests.get(PAGE_URL,headers={'User-Agent':'Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/152 Safari/537.36','Accept-Language':'ko-KR,ko;q=0.9'},timeout=(5,12))
+        hrefs=re.findall(r"href=[\"']([^\"']+)[\"']",r.text,re.I)
+        for h in hrefs:
+            lo=h.lower()
+            if 'facebook' in lo or ('social' in lo and 'login' in lo):return urljoin(PAGE_URL,h.replace('&amp;','&'))
+    except Exception as e:log('WARNING',f'Login assist: direct HTML Facebook-link discovery failed: {type(e).__name__}: {str(e)[:160]}')
+    return None
 
 def prepare_facebook_login():
-    """Prepare Facebook login with hard-bounded renderer work.
-
-    v0.5.9 deliberately starts Chromium at about:blank and uses
-    page_load_strategy=none so Toptoon resource loading cannot hold the
-    HTTP request open for a minute or more. Selenium/renderer calls are
-    kept to a small number and each stage has a short timeout.
-    """
     with BROWSER_LOCK:
         t0=time.monotonic()
         try:
-            d=browser_driver()
-            d.set_page_load_timeout(8)
-            d.set_script_timeout(10)
-            log('INFO','Login assist: attached to persistent Chromium; non-blocking navigation mode is active.')
-
-            # With page_load_strategy=none, get() only tells Chromium to navigate;
-            # it does not wait for the full Toptoon document/resources.
-            try:
-                d.get(PAGE_URL)
-            except TimeoutException:
-                log('WARNING','Login assist: non-blocking Toptoon navigation command timed out; continuing with renderer probe.')
-            time.sleep(2.5)
-
-            try:
-                current=d.current_url or ''
+            d=browser_driver(); log('INFO','Login assist: attached to persistent Chromium; using browser-level CDP/direct HTTP path.')
+            try:auth,msg=_toptoon_auth_probe_http(d)
             except Exception as e:
-                log('WARNING',f'Login assist: renderer did not answer current_url quickly: {type(e).__name__}')
-                return 'browser_slow','Chromium 렌더러 응답이 지연되고 있습니다. 앱을 한 번 재시작한 뒤 다시 시도해 주세요.'
-
-            log('INFO',f'Login assist: URL after non-blocking navigation ({time.monotonic()-t0:.1f}s): {current[:160]}')
-            if 'toptoon.com' not in current.lower():
-                return 'browser_slow','Toptoon 페이지로 빠르게 전환되지 않았습니다. Chromium 렌더러 상태를 확인해 주세요.'
-
-            # Stop remaining ads/trackers/resources. One bounded renderer call only.
-            try:
-                d.execute_script('window.stop(); return document.readyState;')
-            except Exception as e:
-                log('WARNING',f'Login assist: window.stop renderer call failed: {type(e).__name__}')
-
-            # Authoritative auth probe. This is capped inside the page at 10 s and
-            # by Selenium script timeout at 10 s.
-            try:
-                auth,msg=_toptoon_auth_probe_ajax(d)
-            except Exception as e:
-                log('WARNING',f'Login assist: auth probe failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:180]}')
-                return 'browser_slow','Toptoon 로그인 확인이 10초 안에 끝나지 않았습니다. Chromium 렌더러가 느린 상태입니다.'
-
-            log('INFO',f'Login assist: authoritative Toptoon auth probe = {auth} after {time.monotonic()-t0:.1f}s.')
+                log('WARNING',f'Login assist: direct auth probe failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:180]}'); return 'probe_error','Toptoon 로그인 확인 HTTP 요청에 실패했습니다.'
             if auth=='logged_in':
-                save_status(login_state='logged_in',login_message='Toptoon AJAX 세션에서 로그인이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-                return 'logged_in','Toptoon 서버에서 이미 로그인 상태임을 확인했습니다.'
-            if auth=='probe_error':
-                return 'browser_slow','Toptoon 로그인 확인 요청이 지연되었습니다. Chromium 렌더러 상태를 확인해 주세요.'
-
-            # Click Facebook in one JS round-trip instead of many find/is_displayed calls.
-            try:
-                clicked=d.execute_script(r"""
-const nodes=[...document.querySelectorAll('a,button,[role="button"]')];
-const el=nodes.find(e=>{
-  const t=(e.innerText||e.textContent||'').trim().toLowerCase();
-  const h=(e.getAttribute('href')||'').toLowerCase();
-  const c=(e.className||'').toString().toLowerCase();
-  return t.includes('facebook') || t.includes('페이스북') || h.includes('facebook') || c.includes('facebook');
-});
-if(!el) return false;
-el.click(); return true;
-""")
-            except Exception as e:
-                log('WARNING',f'Login assist: Facebook control probe failed: {type(e).__name__}')
-                clicked=False
-
-            if not clicked:
-                save_status(login_state='login_required',login_message='Toptoon 서버는 로그아웃 상태이지만 Facebook 로그인 버튼을 찾지 못했습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-                return 'login_control_missing','로그인이 필요하지만 Facebook 로그인 버튼을 찾지 못했습니다. 로그인 브라우저를 열어 화면 상태를 확인해 주세요.'
-
-            # Give browser process a few seconds for popup/navigation, then inspect once.
-            time.sleep(4)
-            _switch_latest_window(d)
-            try:url=d.current_url or ''
-            except Exception:url=''
-            if 'facebook.com' not in url.lower():
-                log('WARNING',f'Login assist: Facebook transition not confirmed after {time.monotonic()-t0:.1f}s; URL={url[:160]}')
-                return 'facebook_timeout','Facebook 로그인 화면 전환을 빠르게 확인하지 못했습니다. 로그인 브라우저에서 현재 화면을 확인해 주세요.'
-            log('INFO',f'Login assist: Facebook login page ready after {time.monotonic()-t0:.1f}s: {url[:160]}')
-            return 'facebook_ready','Facebook 로그인 화면을 준비했습니다. 아래에서 ID와 비밀번호를 입력하세요.'
+                save_status(login_state='logged_in',login_message='Toptoon 서버에서 Chromium 쿠키 로그인이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds')); return 'logged_in','Toptoon 서버에서 이미 로그인 상태임을 확인했습니다.'
+            save_status(login_state='login_required',login_message=msg or 'Toptoon 로그인이 필요합니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+            fb=_find_facebook_login_url()
+            if not fb:return 'login_control_missing','Toptoon HTML에서 Facebook 로그인 주소를 찾지 못했습니다. 로그인 브라우저에서 확인해 주세요.'
+            log('INFO',f'Login assist: navigating Chromium to discovered Facebook login target after {time.monotonic()-t0:.1f}s.')
+            d.execute_cdp_cmd('Page.navigate', {'url':fb})
+            return 'facebook_ready','Facebook 로그인 페이지로 이동을 요청했습니다. ID와 비밀번호를 입력하세요.'
         except Exception as e:
-            log('WARNING',f'Login assist prepare failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}')
-            return 'browser_error',f'로그인 준비 실패: {type(e).__name__}'
+            log('WARNING',f'Login assist prepare failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}'); return 'browser_error',f'로그인 준비 실패: {type(e).__name__}'
 
 def submit_facebook_login(user,password):
     if not user or not password:return 'input_required','ID와 비밀번호를 모두 입력해 주세요.'
