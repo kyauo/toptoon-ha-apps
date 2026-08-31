@@ -1,5 +1,3 @@
-# Toptoon Attendance Bot v0.5.3
+# Login renewal
 
-Home Assistant App for automatic Toptoon attendance using a persistent Chromium login profile.
-
-v0.5.3 focuses on making the one-time/login-renewal noVNC session substantially lighter and more responsive. The automated attendance path itself is unchanged.
+로그인 콘솔에서 원격 Chromium 입력칸을 먼저 클릭합니다. 상단 입력창에 ID 또는 비밀번호를 붙여넣고 **선택 칸에 전송**을 누릅니다. 입력 텍스트는 파일이나 로그에 저장하지 않으며 X11 클립보드도 잠시 후 비웁니다.

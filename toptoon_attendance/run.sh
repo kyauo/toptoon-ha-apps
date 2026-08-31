@@ -83,7 +83,7 @@ CHROME_PID=$!
 if ! wait_port 9222 "Chromium remote debugging" 30; then dump_log "Chromium" /tmp/chromium.log; exit 1; fi
 
 log INFO "Launching x11vnc..."
-x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 -noxdamage -wait 5 -defer 5 >/tmp/x11vnc.log 2>&1 &
+x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 -wait 20 -defer 20 -nap >/tmp/x11vnc.log 2>&1 &
 VNC_PID=$!
 if ! wait_port 5900 "x11vnc" 20; then dump_log "x11vnc" /tmp/x11vnc.log; exit 1; fi
 

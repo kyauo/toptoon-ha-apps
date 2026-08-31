@@ -8,6 +8,8 @@ RUN apk add --no-cache \
     openbox \
     novnc \
     websockify \
+    xclip \
+    xdotool \
     nginx \
     python3 \
     py3-pip \

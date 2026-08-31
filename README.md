@@ -1,5 +1,5 @@
-# Toptoon Attendance Bot v0.5.3
+# Toptoon Attendance Bot v0.5.4
 
-Home Assistant App for automatic Toptoon attendance using a persistent Chromium login profile.
+GitHub 저장소의 `toptoon_attendance` 폴더를 이 번들 내용으로 교체한 뒤 Home Assistant App을 새로고침하고 0.5.4로 업데이트합니다.
 
-v0.5.3 focuses on making the one-time/login-renewal noVNC session substantially lighter and more responsive. The automated attendance path itself is unchanged.
+로그인 갱신 때는 **로그인 브라우저 열기**를 사용합니다. 아래 원격 Chromium에서 입력할 칸을 먼저 한 번 클릭한 뒤, 상단 입력창에 Mac 클립보드로 ID 또는 비밀번호를 붙여넣고 **선택 칸에 전송**을 누릅니다.

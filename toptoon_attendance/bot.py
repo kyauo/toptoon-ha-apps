@@ -1,4 +1,4 @@
-import html, json, os, threading, time
+import html, json, os, subprocess, threading, time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -126,20 +126,64 @@ def render_ui(message='',kind=''):
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Toptoon Attendance Bot</title><style>
 :root{{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}body{{margin:0;background:#f4f5f7;color:#202124}}.wrap{{max-width:720px;margin:0 auto;padding:20px;position:relative}}.card{{background:white;border-radius:16px;padding:20px;box-shadow:0 2px 10px #0001;margin-bottom:16px}}h1{{font-size:24px;margin:0 36px 6px 0}}p{{line-height:1.55}}.close{{position:absolute;right:25px;top:22px;border:0;background:transparent;font-size:28px;cursor:pointer;color:#666}}.badge{{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;font-size:13px}}.good{{background:#e8f5e9;color:#1b5e20}}.bad{{background:#ffebee;color:#b71c1c}}.neutral{{background:#eceff1;color:#455a64}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}}.item{{border:1px solid #e5e7eb;border-radius:12px;padding:13px}}.label{{color:#6b7280;font-size:12px}}.value{{font-size:17px;font-weight:700;margin-top:4px}}.actions{{display:grid;gap:10px}}button,.btn{{width:100%;box-sizing:border-box;border:0;border-radius:11px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:block}}button:disabled{{opacity:.65;cursor:wait}}.primary{{background:#e53935;color:white}}.secondary{{background:#e8eaed;color:#202124}}.danger{{background:#fff3e0;color:#bf360c}}.busy{{display:none;margin-top:12px;border-radius:10px;padding:12px;background:#e3f2fd;color:#0d47a1;font-weight:700}}.note{{color:#5f6368;font-size:13px}}.okmsg,.warnmsg{{border-radius:10px;padding:12px;margin:12px 0}}.okmsg{{background:#e8f5e9}}.warnmsg{{background:#fff3e0}}@media(prefers-color-scheme:dark){{body{{background:#111827;color:#f3f4f6}}.card{{background:#1f2937}}.item{{border-color:#374151}}.secondary{{background:#374151;color:#f3f4f6}}.note,.label{{color:#9ca3af}}.close{{color:#d1d5db}}}}</style></head><body><div class="wrap">
 <button class="close" onclick="try{{window.parent.location.href='/'}}catch(e){{history.back()}}">×</button><div class="card"><h1>Toptoon Attendance Bot</h1><p>평소에는 이 화면에서 상태만 확인하면 됩니다. <b>로그인 브라우저는 Toptoon 로그인이 풀렸을 때만</b> 열어 주세요. 브라우저 프로필은 앱 재시작 후에도 유지됩니다.</p>{alert}<span class="badge {badge[0]}">{badge[1]}</span><div class="grid"><div class="item"><div class="label">오늘 출석</div><div class="value">{html.escape(str(st.get('today_status','아직 확인 안 함')))}</div></div><div class="item"><div class="label">마지막 상태 확인</div><div class="value" style="font-size:13px">{html.escape(fmt_time(st.get('status_checked_at')))}</div></div></div></div>
-<div class="card"><div class="actions"><button id="checkBtn" class="primary" onclick="runAction('check',this)">지금 로그인 상태 확인</button><button id="attBtn" class="danger" onclick="if(confirm('오늘 미출석이면 실제 출석 요청을 실행합니다. 계속할까요?'))runAction('attendance',this)">지금 출석 테스트</button><a id="vncBtn" class="btn secondary" href="vnc/vnc.html?autoconnect=1&amp;resize=scale&amp;quality=3&amp;compression=6&amp;path=websockify">로그인 브라우저 열기</a></div><div id="busy" class="busy">처리 중... 잠시 기다려 주세요.</div><p class="note">로그인을 마치면 브라우저를 그냥 닫아도 됩니다. 로그인 상태는 /data/chromium-profile에 보존됩니다.</p></div>
+<div class="card"><div class="actions"><button id="checkBtn" class="primary" onclick="runAction('check',this)">지금 로그인 상태 확인</button><button id="attBtn" class="danger" onclick="if(confirm('오늘 미출석이면 실제 출석 요청을 실행합니다. 계속할까요?'))runAction('attendance',this)">지금 출석 테스트</button><a id="vncBtn" class="btn secondary" href="login-console">로그인 브라우저 열기</a></div><div id="busy" class="busy">처리 중... 잠시 기다려 주세요.</div><p class="note">로그인을 마치면 브라우저를 그냥 닫아도 됩니다. 로그인 상태는 /data/chromium-profile에 보존됩니다.</p></div>
 <div class="card"><b>자동 실행</b><p class="note">매일 {o.get('run_time','00:30')} ({o.get('timezone','Asia/Seoul')}) · 재시도 +{o.get('retry_1_minutes',5)}분 / +{o.get('retry_2_minutes',15)}분 · 실패 확인 {o.get('mobile_alert_time','09:05')} · 수동 확인 알림 {o.get('manual_reminder_time','21:00')}</p><div class="label">마지막 출석 실행</div><div>{html.escape(fmt_time(st.get('last_run_at')))}</div><div class="label" style="margin-top:10px">마지막 결과</div><div><b>{html.escape(str(st.get('last_result','아직 없음')))}</b> {html.escape(str(st.get('last_message','')))}</div></div></div>
 <script>async function runAction(a,b){{let c=document.getElementById('checkBtn'),d=document.getElementById('attBtn'),v=document.getElementById('vncBtn'),x=document.getElementById('busy');c.disabled=d.disabled=true;v.style.pointerEvents='none';v.style.opacity='.6';x.style.display='block';b.textContent=a==='attendance'?'출석 처리 중...':'상태 확인 중...';let done=false;let w=setTimeout(()=>{{if(!done)location.reload()}},60000);let ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),55000);try{{let q=new URLSearchParams();q.set('do',a);q.set('ajax','1');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'}},body:q,signal:ctl.signal,cache:'no-store'}});await r.json();done=true;clearTimeout(w);clearTimeout(t);setTimeout(()=>location.reload(),350)}}catch(e){{done=true;clearTimeout(w);clearTimeout(t);setTimeout(()=>location.reload(),700)}}}}</script></body></html>'''
+
+def clear_x_clipboard_later(delay=8):
+    def _clear():
+        time.sleep(delay)
+        try:
+            env=os.environ.copy(); env['DISPLAY']=':99'
+            subprocess.run(['xclip','-selection','clipboard','-i'], input=b'', env=env, timeout=3, check=False)
+        except Exception:
+            pass
+    threading.Thread(target=_clear, daemon=True).start()
+
+def paste_into_browser(text):
+    if not text:
+        return False, '붙여넣을 텍스트가 없습니다.'
+    if len(text) > 4096:
+        return False, '텍스트가 너무 깁니다.'
+    env=os.environ.copy(); env['DISPLAY']=':99'
+    try:
+        cp=subprocess.run(['xclip','-selection','clipboard','-i'], input=text.encode('utf-8'), env=env, timeout=4, check=False)
+        if cp.returncode != 0:
+            return False, '가상 브라우저 클립보드에 텍스트를 전달하지 못했습니다.'
+        time.sleep(0.12)
+        kp=subprocess.run(['xdotool','key','--clearmodifiers','ctrl+v'], env=env, timeout=4, check=False)
+        if kp.returncode != 0:
+            return False, '가상 브라우저에 붙여넣기 키를 전달하지 못했습니다.'
+        clear_x_clipboard_later()
+        log('INFO','Transient text paste sent to the focused Chromium field (content not logged or stored).')
+        return True, '현재 선택된 입력칸에 붙여넣기를 보냈습니다.'
+    except Exception as e:
+        log('WARNING', f'Transient paste failed: {type(e).__name__}: {e}')
+        return False, '붙여넣기 전달에 실패했습니다.'
+
+def render_login_console():
+    return """<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Toptoon Login Console</title><style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark}*{box-sizing:border-box}body{margin:0;background:#111827;color:#f3f4f6}.bar{position:sticky;top:0;z-index:10;background:#111827;padding:10px;border-bottom:1px solid #374151}.row{display:flex;gap:8px;align-items:center}.row input{flex:1;min-width:0;padding:11px 12px;border-radius:9px;border:1px solid #4b5563;background:#fff;color:#111;font-size:16px}.row button,.back{border:0;border-radius:9px;padding:11px 13px;font-weight:700;text-decoration:none;cursor:pointer}.paste{background:#e53935;color:#fff}.back{background:#374151;color:#fff;white-space:nowrap}.hint{font-size:12px;color:#cbd5e1;margin-top:7px;line-height:1.45}.msg{font-size:12px;margin-top:6px;min-height:18px}.frame{width:100%;height:calc(100vh - 105px);border:0;background:#000}@media(max-width:560px){.row{flex-wrap:wrap}.row input{flex-basis:100%}.frame{height:calc(100vh - 150px)}}
+</style></head><body><div class="bar"><div class="row"><a class="back" href="./">← 돌아가기</a><input id="clip" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ID 또는 비밀번호를 여기에 붙여넣기"><button class="paste" id="pasteBtn">선택 칸에 전송</button></div><div class="hint">아래 원격 브라우저에서 먼저 입력칸을 한 번 클릭한 뒤, 위 칸에 Mac에서 ⌘V로 붙여넣고 ‘선택 칸에 전송’을 누르세요. 내용은 파일에 저장하거나 로그에 남기지 않으며, 가상 클립보드도 잠시 뒤 지웁니다.</div><div class="msg" id="msg"></div></div><iframe class="frame" src="vnc/vnc.html?autoconnect=1&amp;resize=scale&amp;quality=3&amp;compression=1&amp;path=websockify"></iframe><script>
+const b=document.getElementById('pasteBtn'),i=document.getElementById('clip'),m=document.getElementById('msg');async function send(){let v=i.value;if(!v){m.textContent='전송할 텍스트를 먼저 넣어 주세요.';return}b.disabled=true;m.textContent='전송 중...';try{let q=new URLSearchParams();q.set('do','paste');q.set('text',v);let r=await fetch('action',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:q,cache:'no-store'});let j=await r.json();m.textContent=j.message||'';if(j.ok)i.value=''}catch(e){m.textContent='전송 실패'}finally{b.disabled=false}}b.onclick=send;i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();send()}});
+</script></body></html>"""
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*a):return
     def sendx(self,obj,json_mode=False,status=200):
         data=(json.dumps(obj,ensure_ascii=False) if json_mode else obj).encode(); self.send_response(status); self.send_header('Content-Type','application/json; charset=utf-8' if json_mode else 'text/html; charset=utf-8'); self.send_header('Cache-Control','no-store'); self.send_header('Content-Length',str(len(data))); self.end_headers(); self.wfile.write(data)
-    def do_GET(self):self.sendx(render_ui() if self.path.split('?',1)[0] in ('/','') else render_ui('알 수 없는 경로입니다.','warn'))
+    def do_GET(self):
+        path=self.path.split('?',1)[0]
+        if path in ('/',''): return self.sendx(render_ui())
+        if path in ('/login-console','/login-console/'): return self.sendx(render_login_console())
+        return self.sendx(render_ui('알 수 없는 경로입니다.','warn'))
     def do_POST(self):
         if self.path.split('?',1)[0]!='/action':return self.sendx({'ok':False,'message':'bad request'},True,404)
         p=parse_qs(self.rfile.read(int(self.headers.get('Content-Length','0') or 0)).decode()); a=p.get('do',[''])[0]
         if a=='check':s,m=inspect_page(); ok=s=='logged_in'
         elif a=='attendance':s,m=manual_attendance(); ok=s in OK_STATES
+        elif a=='paste':
+            ok,m=paste_into_browser(p.get('text',[''])[0]); return self.sendx({'ok':ok,'message':m},True,200 if ok else 400)
         else:return self.sendx({'ok':False,'message':'unsupported'},True,400)
         self.sendx({'ok':ok,'state':s,'message':m},True)
 def start_ui():
