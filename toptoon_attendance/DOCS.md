@@ -5,3 +5,6 @@
 
 ## v0.5.5
 빠른 Facebook 로그인 도우미를 추가했습니다. 일반 로그인은 VNC 화면을 조작하지 않고 Selenium DOM 조작으로 진행하며, ID/비밀번호는 저장하거나 로그에 남기지 않습니다. Facebook 추가 인증/보안 확인이 나타날 때만 VNC를 사용합니다. 페이지 이동 단계별 소요 시간을 앱 로그에 기록합니다.
+
+## v0.5.7 behavior
+Attendance reuses the current Toptoon Chromium document whenever possible. A full page reload is no longer required before every manual or scheduled attendance request. The attendance AJAX response is authoritative for authentication state.

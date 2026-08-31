@@ -1,7 +1,11 @@
-# Toptoon Attendance Bot v0.5.6 bundle
+# Toptoon Attendance Bot v0.5.7 bundle
 
-`toptoon_attendance` 폴더 전체를 기존 GitHub 저장소의 같은 폴더에 덮어쓴 뒤 Home Assistant App Store에서 업데이트하세요.
+This build focuses on the two problems observed in v0.5.6: false `already logged in` detection and an unnecessary full attendance-page reload before every attendance POST.
 
-이번 버전의 핵심은 로그인 확인과 실제 출석 요청이 서로 다른 인증 상태를 보지 않도록 persistent Chromium 세션 하나로 통일한 것입니다. 또한 Toptoon 페이지 전체 리소스 로딩을 오래 기다리지 않도록 조정했습니다.
+## Test after update
+1. Update the `toptoon_attendance` folder and restart the App.
+2. Do **not** open VNC first.
+3. Press `지금 출석 테스트` once.
+4. Check the UI result and log timing lines beginning with `Attendance:`.
 
-업데이트 후에는 OPEN WEB UI에서 먼저 `지금 로그인 상태 확인`, 이어서 `지금 출석 테스트`를 한 번씩 실행하고 로그의 `Attendance:` 줄과 최종 결과를 확인하세요.
+If the existing Chromium document is already on `toptoon.com`, v0.5.7 should skip navigation completely and send the attendance AJAX request immediately. The AJAX response is treated as the authoritative login check.

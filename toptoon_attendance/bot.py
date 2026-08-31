@@ -54,67 +54,97 @@ def browser_driver():
 def page_text(d):
     try:return d.find_element(By.TAG_NAME,'body').text
     except Exception:return ''
+def login_probe(d):
+    """Conservative DOM/cookie probe. Never claim logged-in from absence of a login page alone."""
+    try:
+        u=d.current_url.lower()
+        if 'facebook.com' in u or 'login' in u or 'member/login' in u:
+            return 'login_required'
+        # Visible login controls are stronger evidence than body text.
+        login_nodes=d.find_elements(By.XPATH,"//*[self::a or self::button or @role='button'][contains(normalize-space(.),'로그인') or contains(translate(normalize-space(.),'FACEBOOK','facebook'),'facebook') or contains(normalize-space(.),'페이스북')]")
+        if any(e.is_displayed() for e in login_nodes):
+            return 'login_required'
+        logout_nodes=d.find_elements(By.XPATH,"//*[self::a or self::button][contains(normalize-space(.),'로그아웃') or contains(translate(@href,'LOGOUT','logout'),'logout')]")
+        if any(e.is_displayed() for e in logout_nodes):
+            return 'logged_in'
+        names={c.get('name') for c in d.get_cookies()}
+        if 'rm_session' in names:
+            return 'probably_logged_in'
+    except Exception:
+        pass
+    return 'unknown'
+
 def is_login_required(d):
-    u=d.current_url.lower(); body=page_text(d).lower()
-    return ('login' in u or 'member/login' in u or '로그인' in body and ('facebook' in body or '페이스북' in body))
+    return login_probe(d)=='login_required'
 
 def inspect_page():
     with BROWSER_LOCK:
+        t0=time.monotonic()
         try:
-            d=browser_driver(); d.get(PAGE_URL); WebDriverWait(d,25).until(lambda x:x.execute_script("return document.readyState") in ('interactive','complete')); time.sleep(3)
-            if is_login_required(d): state,msg='login_required','Toptoon 로그인이 필요합니다. 로그인 브라우저를 열어 로그인해 주세요.'
-            else: state,msg='logged_in','Toptoon 로그인 세션이 유지되고 있습니다.'
+            d=browser_driver(); d.set_page_load_timeout(18)
+            if 'toptoon.com' not in d.current_url.lower():
+                try:d.get(PAGE_URL)
+                except TimeoutException:
+                    try:d.execute_script('window.stop();')
+                    except Exception:pass
+            probe=login_probe(d)
+            if probe=='login_required': state,msg='login_required','Toptoon 로그인이 필요합니다.'
+            elif probe=='logged_in': state,msg='logged_in','Toptoon 로그인 상태가 DOM에서 확인되었습니다.'
+            elif probe=='probably_logged_in': state,msg='probably_logged_in','로그인 세션 쿠키가 있습니다. 실제 출석 요청으로 최종 확인됩니다.'
+            else: state,msg='unknown','로그인 여부를 확정하지 못했습니다. 실제 출석 테스트로 확인해 주세요.'
             save_status(login_state=state,login_message=msg,status_checked_at=now_local().isoformat(timespec='seconds'))
-            log('INFO',f'Status check: {state} / {msg}'); return state,msg
+            log('INFO',f'Status check after {time.monotonic()-t0:.1f}s: {state} / {msg}'); return state,msg
         except Exception as e:
             msg=str(e)[:400]; save_status(login_state='browser_error',login_message=msg,status_checked_at=now_local().isoformat(timespec='seconds')); log('WARNING',f'Status check failed: {msg}'); return 'browser_error',msg
 
 def check_attendance():
-    # v0.5.6: use the already-running persistent Chromium profile end-to-end.
-    # Do not create a requests.Session and do not maintain a second auth state.
+    # v0.5.7: reuse the already-open Toptoon document whenever possible.
+    # The attendance POST itself is authoritative for both auth and attendance state.
     with BROWSER_LOCK:
         t0=time.monotonic()
         try:
-            d=browser_driver(); d.set_page_load_timeout(30)
-            log('INFO','Attendance: using persistent Chromium session on 127.0.0.1:9222.')
-            try:
-                d.get(PAGE_URL)
-            except TimeoutException:
-                try:d.execute_script('window.stop();')
-                except Exception:pass
-                log('WARNING',f'Attendance: page load interrupted after {time.monotonic()-t0:.1f}s; continuing with loaded DOM.')
-            WebDriverWait(d,12).until(lambda x: 'toptoon.com' in x.current_url.lower())
-            # Give the site's own scripts a short bounded window, not an unconditional long sleep.
-            try:WebDriverWait(d,8).until(lambda x: x.execute_script("return document.readyState") in ('interactive','complete'))
-            except Exception:pass
-            log('INFO',f'Attendance: Toptoon context ready after {time.monotonic()-t0:.1f}s.')
-
-            # Execute from the Toptoon document itself so the browser supplies the persistent
-            # profile's cookies and same-origin credentials.  Resolve ci_token from the page
-            # when present, otherwise preserve the previously verified null behavior.
+            d=browser_driver(); d.set_page_load_timeout(18); d.set_script_timeout(18)
+            log('INFO','Attendance: attached to persistent Chromium on 127.0.0.1:9222.')
+            current=d.current_url or ''
+            if 'toptoon.com' in current.lower():
+                log('INFO',f'Attendance: reusing current Toptoon document without reload: {current[:160]}')
+            else:
+                log('INFO',f'Attendance: current page is outside Toptoon ({current[:120]}); navigating once.')
+                nav0=time.monotonic()
+                try:d.get(PAGE_URL)
+                except TimeoutException:
+                    try:d.execute_script('window.stop();')
+                    except Exception:pass
+                    log('WARNING',f'Attendance: navigation bounded at {time.monotonic()-nav0:.1f}s; continuing with loaded DOM.')
+                if 'toptoon.com' not in (d.current_url or '').lower():
+                    return 'browser_error',f'Toptoon 문맥으로 이동하지 못했습니다: {d.current_url}'
+            log('INFO',f'Attendance: Toptoon context available after {time.monotonic()-t0:.1f}s.')
             result=d.execute_async_script("""
 const done=arguments[arguments.length-1];
 const el=document.querySelector('input[name="ci_token"], meta[name="ci_token"]');
-let token=null;
-if(el) token=(el.value || el.content || null);
+let token=null;if(el) token=(el.value || el.content || null);
 const body='ci_token='+encodeURIComponent(token===null ? 'null' : token);
-fetch('/event/attendance',{method:'POST',credentials:'include',cache:'no-store',headers:{
+const ctl=new AbortController(); const timer=setTimeout(()=>ctl.abort(),12000);
+fetch('/event/attendance',{method:'POST',credentials:'include',cache:'no-store',signal:ctl.signal,headers:{
  'Accept':'application/json, text/javascript, */*; q=0.01',
  'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
  'X-Requested-With':'XMLHttpRequest'
 },body})
-.then(async r=>{let t=await r.text();let j=null;try{j=JSON.parse(t)}catch(e){};done({ok:r.ok,status:r.status,json:j,text:t.slice(0,400),url:location.href});})
-.catch(e=>done({error:String(e),url:location.href}));
+.then(async r=>{clearTimeout(timer);let t=await r.text();let j=null;try{j=JSON.parse(t)}catch(e){};done({ok:r.ok,status:r.status,json:j,text:t.slice(0,400),url:location.href});})
+.catch(e=>{clearTimeout(timer);done({error:String(e),url:location.href});});
 """)
+            log('INFO',f'Attendance: AJAX returned after {time.monotonic()-t0:.1f}s.')
             if result.get('error'): return 'network_error',result['error']
             body=result.get('json')
             if not isinstance(body,dict): return 'invalid_response',f"HTTP {result.get('status')}: {result.get('text','')}"
             msg=str(body.get('message') or '')
-            if body.get('result') is True:return 'success',msg or '출석 완료'
-            if '이미 출석' in msg:return 'already_done',msg
+            if body.get('result') is True:
+                save_status(login_state='logged_in',login_message='Toptoon AJAX 세션에서 로그인이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+                return 'success',msg or '출석 완료'
+            if '이미 출석' in msg:
+                save_status(login_state='logged_in',login_message='Toptoon AJAX 세션에서 로그인이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+                return 'already_done',msg
             if body.get('errorType')=='login':
-                # The AJAX endpoint is authoritative.  Update login status too, so the UI can
-                # no longer say 'logged in' while attendance says login_required.
                 save_status(login_state='login_required',login_message=msg or 'Toptoon AJAX 세션에서 로그인이 확인되지 않았습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
                 return 'login_required',msg or '로그인이 만료되었습니다.'
             return 'failed',msg or json.dumps(body,ensure_ascii=False)[:300]
@@ -170,7 +200,7 @@ def render_ui(message='',kind=''):
 <div class="card"><b>빠른 Facebook 로그인</b><p class="note">VNC 화면을 기다리지 않고 Selenium이 로그인 페이지를 직접 조작합니다. 먼저 준비 버튼을 누른 뒤 ID와 비밀번호를 입력하세요. 비밀번호는 저장하거나 로그에 남기지 않습니다.</p><div class="actions"><button class="secondary" id="prepBtn" onclick="loginPrepare(this)">Facebook 로그인 화면 준비</button></div><div style="display:grid;gap:8px;margin-top:10px"><input id="fbid" autocomplete="username" placeholder="Facebook ID" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><input id="fbpw" type="password" autocomplete="current-password" placeholder="Facebook 비밀번호" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><button class="primary" id="loginBtn" onclick="loginSubmit(this)">Facebook 로그인 제출</button><div id="loginMsg" class="note"></div></div></div>
 <div class="card"><div class="actions"><button id="checkBtn" class="primary" onclick="runAction('check',this)">지금 로그인 상태 확인</button><button id="attBtn" class="danger" onclick="if(confirm('오늘 미출석이면 실제 출석 요청을 실행합니다. 계속할까요?'))runAction('attendance',this)">지금 출석 테스트</button><a id="vncBtn" class="btn secondary" href="login-console">로그인 브라우저 열기</a></div><div id="busy" class="busy">처리 중... 잠시 기다려 주세요.</div><p class="note">로그인을 마치면 브라우저를 그냥 닫아도 됩니다. 로그인 상태는 /data/chromium-profile에 보존됩니다.</p></div>
 <div class="card"><b>자동 실행</b><p class="note">매일 {o.get('run_time','00:30')} ({o.get('timezone','Asia/Seoul')}) · 재시도 +{o.get('retry_1_minutes',5)}분 / +{o.get('retry_2_minutes',15)}분 · 실패 확인 {o.get('mobile_alert_time','09:05')} · 수동 확인 알림 {o.get('manual_reminder_time','21:00')}</p><div class="label">마지막 출석 실행</div><div>{html.escape(fmt_time(st.get('last_run_at')))}</div><div class="label" style="margin-top:10px">마지막 결과</div><div><b>{html.escape(str(st.get('last_result','아직 없음')))}</b> {html.escape(str(st.get('last_message','')))}</div></div></div>
-<script>async function postLogin(doit,extra={{}}){{let q=new URLSearchParams();q.set('do',doit);for(const [k,v] of Object.entries(extra))q.set(k,v);let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store'}});return await r.json()}}async function loginPrepare(b){{let m=document.getElementById('loginMsg');b.disabled=true;m.textContent='Facebook 로그인 화면 준비 중...';try{{let j=await postLogin('login_prepare');m.textContent=j.message||j.state}}catch(e){{m.textContent='로그인 화면 준비 요청 실패'}}finally{{b.disabled=false}}}}async function loginSubmit(b){{let m=document.getElementById('loginMsg'),u=document.getElementById('fbid'),p=document.getElementById('fbpw');if(!u.value||!p.value){{m.textContent='ID와 비밀번호를 모두 입력해 주세요.';return}}b.disabled=true;m.textContent='로그인 제출 중...';try{{let j=await postLogin('login_submit',{{user:u.value,password:p.value}});p.value='';m.textContent=j.message||j.state;if(j.state==='logged_in')setTimeout(()=>location.reload(),800)}}catch(e){{p.value='';m.textContent='로그인 제출 요청 실패'}}finally{{b.disabled=false}}}}async function runAction(a,b){{let c=document.getElementById('checkBtn'),d=document.getElementById('attBtn'),v=document.getElementById('vncBtn'),x=document.getElementById('busy');c.disabled=d.disabled=true;v.style.pointerEvents='none';v.style.opacity='.6';x.style.display='block';b.textContent=a==='attendance'?'출석 처리 중...':'상태 확인 중...';let done=false;let w=setTimeout(()=>{{if(!done)location.reload()}},60000);let ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),55000);try{{let q=new URLSearchParams();q.set('do',a);q.set('ajax','1');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'}},body:q,signal:ctl.signal,cache:'no-store'}});await r.json();done=true;clearTimeout(w);clearTimeout(t);setTimeout(()=>location.reload(),350)}}catch(e){{done=true;clearTimeout(w);clearTimeout(t);setTimeout(()=>location.reload(),700)}}}}</script></body></html>'''
+<script>async function postLogin(doit,extra={{}}){{let q=new URLSearchParams();q.set('do',doit);for(const [k,v] of Object.entries(extra))q.set(k,v);let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store'}});return await r.json()}}async function loginPrepare(b){{let m=document.getElementById('loginMsg');b.disabled=true;m.textContent='Facebook 로그인 화면 준비 중...';try{{let j=await postLogin('login_prepare');m.textContent=j.message||j.state}}catch(e){{m.textContent='로그인 화면 준비 요청 실패'}}finally{{b.disabled=false}}}}async function loginSubmit(b){{let m=document.getElementById('loginMsg'),u=document.getElementById('fbid'),p=document.getElementById('fbpw');if(!u.value||!p.value){{m.textContent='ID와 비밀번호를 모두 입력해 주세요.';return}}b.disabled=true;m.textContent='로그인 제출 중...';try{{let j=await postLogin('login_submit',{{user:u.value,password:p.value}});p.value='';m.textContent=j.message||j.state;if(j.state==='logged_in')setTimeout(()=>location.reload(),800)}}catch(e){{p.value='';m.textContent='로그인 제출 요청 실패'}}finally{{b.disabled=false}}}}async function runAction(a,b){{let c=document.getElementById('checkBtn'),d=document.getElementById('attBtn'),v=document.getElementById('vncBtn'),x=document.getElementById('busy');c.disabled=d.disabled=true;v.style.pointerEvents='none';v.style.opacity='.6';x.style.display='block';b.textContent=a==='attendance'?'출석 처리 중...':'상태 확인 중...';let done=false;let w=setTimeout(()=>{{if(!done)location.reload()}},125000);let ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),120000);try{{let q=new URLSearchParams();q.set('do',a);q.set('ajax','1');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'}},body:q,signal:ctl.signal,cache:'no-store'}});let j=await r.json();done=true;clearTimeout(w);clearTimeout(t);x.textContent=(j.message||j.state||'완료');setTimeout(()=>location.reload(),900)}}catch(e){{done=true;clearTimeout(w);clearTimeout(t);x.textContent='요청이 시간 초과되었거나 연결이 끊겼습니다.';setTimeout(()=>location.reload(),1200)}}}}</script></body></html>'''
 
 
 def _switch_latest_window(d):
@@ -188,13 +218,18 @@ def prepare_facebook_login():
             try:d.get(PAGE_URL)
             except Exception as e:log('WARNING',f'Login assist: page load timeout/interrupt after {time.monotonic()-t0:.1f}s: {type(e).__name__}')
             log('INFO',f'Login assist: Toptoon navigation reached {d.current_url} after {time.monotonic()-t0:.1f}s.')
-            if not is_login_required(d): return 'logged_in','이미 Toptoon 로그인 상태입니다.'
+            probe=login_probe(d)
+            if probe=='logged_in':
+                return 'logged_in','Toptoon 로그인 상태가 명확히 확인되었습니다.'
+            # probably_logged_in/unknown are deliberately NOT treated as success.
+            # Continue looking for a Facebook login control so stale cookies cannot create a false positive.
             # Prefer visible elements containing Facebook text, then common href/class patterns.
             candidates=d.find_elements(By.XPATH,"//*[self::a or self::button or @role='button'][contains(translate(normalize-space(.),'FACEBOOK','facebook'),'facebook') or contains(normalize-space(.),'페이스북')]")
             if not candidates:
                 candidates=d.find_elements(By.CSS_SELECTOR,"a[href*='facebook'], [class*='facebook'], [class*='Facebook']")
             target=next((e for e in candidates if e.is_displayed() and e.is_enabled()),None)
-            if not target:return 'facebook_button_not_found','Toptoon 로그인 화면은 열렸지만 Facebook 로그인 버튼을 찾지 못했습니다. 이 경우에만 VNC를 사용해 주세요.'
+            if not target:
+                return 'login_uncertain','로그인 상태를 확정할 수 없고 Facebook 로그인 버튼도 찾지 못했습니다. 먼저 출석 테스트로 서버 판정을 확인해 주세요.'
             before=set(d.window_handles); d.execute_script("arguments[0].click();",target)
             WebDriverWait(d,15).until(lambda x: len(x.window_handles)>len(before) or 'facebook' in x.current_url.lower() or x.current_url!=PAGE_URL)
             _switch_latest_window(d); time.sleep(1)
