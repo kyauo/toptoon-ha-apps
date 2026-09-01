@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.26
+# Toptoon Attendance Bot v0.5.27
+
+## v0.5.27
+- Added browser-level Chromium DevTools websocket cookie reading so a crashed renderer tab does not block login checks or attendance tests.
+- Attendance tests and browser-cookie login checks now avoid Selenium tab attachment when copying cookies from persistent Chromium.
+- Added `websocket-client` to the app image for direct DevTools websocket access.
+- Synchronized visible version strings to 0.5.27.
 
 ## v0.5.26
 - Changed the browser login redirect from `/event/attendance` to `/` so a successful login does not immediately load the heavy attendance page.

@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.26
+# Toptoon Attendance Bot v0.5.27
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.27
+- Chromium 탭이 `Aw Snap` 상태로 죽어도 브라우저 프로세스의 DevTools websocket에서 쿠키를 읽도록 했습니다.
+- 출석 테스트와 브라우저 쿠키 로그인 확인은 쿠키 복사 시 Selenium 탭 attach를 피합니다.
+- 직접 DevTools websocket 접근을 위해 `websocket-client`를 앱 이미지에 추가했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.27로 통일했습니다.
 
 ## v0.5.26
 - 로그인 성공 직후 무거운 `/event/attendance` 페이지로 이동하지 않도록 브라우저 로그인 redirect를 `/`로 바꿨습니다.

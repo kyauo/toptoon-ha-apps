@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote
 from zoneinfo import ZoneInfo
 import requests
+import websocket
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -238,8 +239,8 @@ def check_attendance(skip_when_login_required=False):
     with BROWSER_LOCK:
         t0=time.monotonic()
         try:
-            d=browser_driver(); sess,cookies=_requests_from_browser(d)
-            log('INFO',f'Attendance: copied {len(cookies)} Toptoon cookies from persistent Chromium via CDP.')
+            sess,cookies=_requests_from_browser()
+            log('INFO',f'Attendance: copied {len(cookies)} Toptoon cookies from persistent Chromium via browser-level CDP.')
             r=sess.post('https://toptoon.com/event/attendance',data={'ci_token':'null'},headers={'Accept':'application/json, text/javascript, */*; q=0.01','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Origin':'https://toptoon.com','Referer':PAGE_URL},timeout=(5,12))
             log('INFO',f'Attendance: direct AJAX returned HTTP {r.status_code} after {time.monotonic()-t0:.1f}s.')
             try:body=r.json()
@@ -317,10 +318,37 @@ def _browser_cookies_via_cdp(d):
     cookies=data.get('cookies',[]) if isinstance(data,dict) else []
     return [c for c in cookies if 'toptoon.com' in str(c.get('domain','')).lower()]
 
-def _requests_from_browser(d):
+def _browser_cookies_via_debug_port():
+    try:
+        r=requests.get('http://127.0.0.1:9222/json/version',timeout=3)
+        ws_url=(r.json() or {}).get('webSocketDebuggerUrl')
+        if not ws_url:return None
+        ws=websocket.create_connection(ws_url,timeout=5)
+        try:
+            for i,method in enumerate(('Network.getAllCookies','Storage.getCookies'),start=1):
+                ws.send(json.dumps({'id':i,'method':method}))
+                deadline=time.monotonic()+5
+                while time.monotonic()<deadline:
+                    msg=json.loads(ws.recv())
+                    if msg.get('id')!=i:continue
+                    if 'error' in msg:break
+                    result=msg.get('result') or {}
+                    cookies=result.get('cookies',[]) if isinstance(result,dict) else []
+                    return [c for c in cookies if 'toptoon.com' in str(c.get('domain','')).lower()]
+        finally:
+            try:ws.close()
+            except Exception:pass
+    except Exception as e:
+        log('WARNING',f'Chromium browser-level cookie read failed: {type(e).__name__}: {str(e)[:160]}')
+    return None
+
+def _requests_from_browser(d=None):
     sess=requests.Session()
     sess.headers.update({'User-Agent':_ua(),'Accept-Language':'ko-KR,ko;q=0.9,en;q=0.8'})
-    cookies=_browser_cookies_via_cdp(d)
+    cookies=_browser_cookies_via_debug_port()
+    if cookies is None and d is not None:
+        cookies=_browser_cookies_via_cdp(d)
+    cookies=cookies or []
     for c in cookies:
         try:sess.cookies.set(c['name'],c.get('value',''),domain=c.get('domain') or '.toptoon.com',path=c.get('path') or '/')
         except Exception:pass
@@ -338,7 +366,7 @@ def _copy_requests_cookies_to_browser(d,sess):
             log('WARNING',f'Login assist: failed to persist cookie {c.name}: {type(e).__name__}')
     return copied
 
-def _toptoon_auth_probe_http(d):
+def _toptoon_auth_probe_http(d=None):
     sess,cookies=_requests_from_browser(d); t=time.monotonic()
     r=sess.post('https://toptoon.com/event/attendance',data={'ci_token':'null'},headers={'Accept':'application/json, text/javascript, */*; q=0.01','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Origin':'https://toptoon.com','Referer':PAGE_URL},timeout=(5,12))
     log('INFO',f'Login assist: direct Toptoon auth probe returned HTTP {r.status_code} after {time.monotonic()-t:.1f}s using {len(cookies)} Toptoon cookies.')
@@ -352,7 +380,7 @@ def _toptoon_auth_probe_http(d):
 def browser_cookie_login_check():
     with BROWSER_LOCK:
         try:
-            d=browser_driver(); sess,cookies=_requests_from_browser(d)
+            sess,cookies=_requests_from_browser()
         except Exception as e:
             msg=f'Chromium 쿠키를 읽지 못했습니다: {type(e).__name__}: {str(e)[:160]}'
             save_status(login_state='browser_error',login_message=msg,status_checked_at=now_local().isoformat(timespec='seconds'))
@@ -434,8 +462,7 @@ def _verify_login_after_submit():
         time.sleep(delay)
         try:
             with BROWSER_LOCK:
-                d=browser_driver()
-                state,msg=_toptoon_auth_probe_http(d)
+                state,msg=_toptoon_auth_probe_http()
             log('INFO',f'Login assist: post-submit Toptoon auth probe -> {state}.')
             if state=='logged_in':
                 save_status(login_state='logged_in',login_message='Toptoon 서버에서 로그인 성공을 확인했습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))

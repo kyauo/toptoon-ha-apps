@@ -1,3 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.26
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.27
 
-v0.5.26은 로그인 직후 무거운 출석 페이지로 이동하지 않도록 redirect를 홈으로 바꾸고, Chromium 화면이 느리거나 크래시되어도 쿠키만 읽어 로그인 여부를 확인하는 버튼을 추가한 버전입니다.
+v0.5.27은 Chromium 탭이 `Aw Snap` 상태로 죽어도 브라우저 프로세스의 DevTools websocket에서 쿠키를 읽어 로그인 확인과 출석 테스트를 계속할 수 있게 한 버전입니다.
