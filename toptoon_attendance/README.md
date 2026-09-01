@@ -1,6 +1,11 @@
-# Toptoon Attendance Bot v0.5.15
+# Toptoon Attendance Bot v0.5.16
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.16
+- 과거 저장된 `phpsessid`, `rm_session` 옵션을 Supervisor validation 호환용으로만 다시 허용합니다.
+- 해당 값들은 로그인이나 인증 판정에 사용하지 않습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.16으로 통일했습니다.
 
 ## v0.5.15
 - 로그인 준비 단계가 Chromium을 건드리지 않고 즉시 반환합니다.

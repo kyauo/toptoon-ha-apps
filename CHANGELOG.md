@@ -1,4 +1,9 @@
-# Toptoon Attendance Bot v0.5.15
+# Toptoon Attendance Bot v0.5.16
+
+## v0.5.16
+- Reintroduced legacy `phpsessid` and `rm_session` config keys as ignored compatibility options so Supervisor can validate old saved app options without warnings.
+- The app still does not use cookie option values for login or authentication.
+- Synchronized visible version strings to 0.5.16.
 
 ## v0.5.15
 - Changed login preparation to return immediately without touching Chromium; Toptoon ID login no longer needs a browser page preparation step.
