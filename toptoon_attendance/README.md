@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.17
+# Toptoon Attendance Bot v0.5.18
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.18
+- Toptoon ID 로그인 응답이 HTTP 200 `text/html`이어도 곧바로 실패하지 않고 direct attendance probe로 실제 로그인 여부를 확인합니다.
+- JSON 성공 응답과 HTML 성공 응답 모두 같은 Chromium cookie persistence 경로를 사용합니다.
+- HTML 응답 뒤에도 출석 probe가 로그인 필요를 반환하면 더 명확한 실패 메시지를 표시합니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.18로 통일했습니다.
 
 ## v0.5.17
 - Toptoon ID 로그인 응답이 HTTP 200이지만 JSON으로 바로 파싱되지 않는 경우 JSON 객체 복구 파싱을 시도합니다.

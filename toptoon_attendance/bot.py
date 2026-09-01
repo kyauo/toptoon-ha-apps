@@ -239,6 +239,22 @@ def _toptoon_auth_probe_session(sess):
     if isinstance(body,dict) and body.get('errorType')=='login':return 'login_required',msg or '로그인이 필요합니다.'
     return 'unknown',msg
 
+def _persist_verified_login_session(sess):
+    copied=0
+    try:
+        with BROWSER_LOCK:
+            d=browser_driver()
+            try:d.command_executor.set_timeout(8)
+            except Exception:pass
+            copied=_copy_requests_cookies_to_browser(d,sess)
+    except Exception as e:
+        log('WARNING',f'Login assist: login succeeded but Chromium cookie persistence failed: {type(e).__name__}: {str(e)[:180]}')
+        save_status(login_state='verification_needed',login_message='Toptoon ID 로그인은 성공했지만 Chromium 세션 저장이 실패했습니다. 앱을 재시작하거나 로그인 브라우저 수동 로그인이 필요할 수 있습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+        return 'verification_needed','Toptoon ID 로그인은 성공했지만 Chromium 세션 저장이 실패했습니다.'
+    save_status(login_state='logged_in',login_message='Toptoon ID 로그인 및 Chromium 세션 저장이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+    log('INFO',f'Login assist: Toptoon ID login persisted {copied} cookies after direct auth probe confirmed login.')
+    return 'logged_in','Toptoon ID 로그인 성공. Chromium 세션에 저장했습니다.'
+
 def _open_chrome_url_http(url):
     """Open a URL through Chromium's debugging HTTP endpoint without waiting on the renderer."""
     q=quote(url,safe='')
@@ -305,7 +321,12 @@ def submit_toptoon_login(user,password):
             if isinstance(parsed,tuple):
                 _,ctype,snippet=parsed
                 log('WARNING',f'Login assist: non-JSON Toptoon login response: content-type={ctype or "-"} snippet={snippet!r}')
-                return 'invalid_response',f'로그인 응답을 JSON으로 읽지 못했습니다: HTTP {r.status_code} / {ctype or "content-type 없음"}'
+                state,probe_msg=_toptoon_auth_probe_session(sess)
+                if state=='logged_in':
+                    return _persist_verified_login_session(sess)
+                if '로그인' in probe_msg:
+                    return 'login_failed','Toptoon이 로그인 성공 JSON을 반환하지 않았고, 출석 probe도 로그인 필요 상태입니다.'
+                return 'invalid_response',f'로그인 응답은 HTML이고 인증 확인도 실패했습니다: {probe_msg}'
             body=parsed
             msg=str(body.get('message') or body.get('alert') or '') if isinstance(body,dict) else ''
             if isinstance(body,dict) and body.get('result'):
@@ -313,20 +334,7 @@ def submit_toptoon_login(user,password):
                 if state!='logged_in':
                     save_status(login_state='verification_needed',login_message=f'Toptoon ID 로그인 응답은 성공했지만 인증 확인은 아직 필요합니다: {probe_msg}',status_checked_at=now_local().isoformat(timespec='seconds'))
                     return 'verification_needed',f'로그인 응답은 성공했지만 Toptoon 인증 확인이 필요합니다: {probe_msg}'
-                copied=0
-                try:
-                    with BROWSER_LOCK:
-                        d=browser_driver()
-                        try:d.command_executor.set_timeout(8)
-                        except Exception:pass
-                        copied=_copy_requests_cookies_to_browser(d,sess)
-                except Exception as e:
-                    log('WARNING',f'Login assist: login succeeded but Chromium cookie persistence failed: {type(e).__name__}: {str(e)[:180]}')
-                    save_status(login_state='verification_needed',login_message='Toptoon ID 로그인은 성공했지만 Chromium 세션 저장이 실패했습니다. 앱을 재시작하거나 로그인 브라우저 수동 로그인이 필요할 수 있습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-                    return 'verification_needed','Toptoon ID 로그인은 성공했지만 Chromium 세션 저장이 실패했습니다.'
-                save_status(login_state='logged_in',login_message='Toptoon ID 로그인 및 Chromium 세션 저장이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-                log('INFO',f'Login assist: Toptoon ID login persisted {copied} cookies after direct auth probe confirmed login.')
-                return 'logged_in','Toptoon ID 로그인 성공. Chromium 세션에 저장했습니다.'
+                return _persist_verified_login_session(sess)
             if isinstance(body,dict) and body.get('result')=='PW_FALSE':
                 return 'login_failed',msg or '비밀번호가 맞지 않습니다.'
             if msg and 'Captcha' in msg:

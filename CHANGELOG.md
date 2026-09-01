@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.17
+# Toptoon Attendance Bot v0.5.18
+
+## v0.5.18
+- Treat HTTP 200 `text/html` login responses as potentially successful and verify them with the direct attendance probe before failing.
+- Share Chromium cookie persistence through one helper for JSON-success and HTML-success login flows.
+- Return clearer messages when Toptoon returns an HTML response but the follow-up auth probe still reports login required.
+- Synchronized visible version strings to 0.5.18.
 
 ## v0.5.17
 - Added resilient login response parsing that can recover a JSON object embedded in an otherwise non-JSON Toptoon response.
