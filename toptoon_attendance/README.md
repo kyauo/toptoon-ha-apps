@@ -1,6 +1,13 @@
-# Toptoon Attendance Bot v0.5.13
+# Toptoon Attendance Bot v0.5.14
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.14
+- Facebook quick login 대신 Toptoon ID/비밀번호 직접 로그인을 사용합니다.
+- `/login/login_proc`에 browser AJAX와 같은 형태로 `user_id`, `user_pw`, `ci_token`, 자동 로그인 옵션을 전송합니다.
+- 로그인 성공 쿠키를 persistent Chromium profile에 반영한 뒤 direct attendance AJAX probe로 인증을 확인합니다.
+- CAPTCHA 또는 계정 확인이 필요한 경우에는 로그인 브라우저에서 수동으로 처리합니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.14로 통일했습니다.
 
 ## v0.5.13
 - Facebook 로그인 준비 이동을 Chromium debug HTTP endpoint로 먼저 처리합니다.
@@ -16,4 +23,4 @@ Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
 - 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.12로 통일했습니다.
 
 ## 로그인 갱신
-`Facebook 로그인 화면 준비` 후 ID와 비밀번호를 입력하고 제출합니다. 제출 직후 상태는 `확인 중`이 될 수 있으며, Toptoon 서버 인증이 확인되면 `로그인 유지됨`으로 갱신됩니다. Facebook 추가 인증 또는 보안 확인이 필요한 경우에만 VNC를 사용하세요.
+`Toptoon 로그인 화면 준비` 후 Toptoon ID와 비밀번호를 입력하고 제출합니다. Toptoon 서버 인증이 확인되면 `로그인 유지됨`으로 갱신됩니다. CAPTCHA 또는 추가 계정 확인이 필요한 경우에만 로그인 브라우저를 사용하세요.

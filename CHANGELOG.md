@@ -1,4 +1,11 @@
-# Toptoon Attendance Bot v0.5.13
+# Toptoon Attendance Bot v0.5.14
+
+## v0.5.14
+- Replaced Facebook quick login with direct Toptoon ID/password login via `/login/login_proc`.
+- Matches Toptoon's browser login POST shape, including `ci_token` from `ci_cookie`, auto-login, AJAX headers, and transient credentials.
+- Persists successful login cookies into the persistent Chromium profile through CDP, then verifies authentication with the direct attendance AJAX probe.
+- Keeps the login browser as the fallback for CAPTCHA, account challenge, or other manual confirmation.
+- Synchronized visible version strings to 0.5.14.
 
 ## v0.5.13
 - Open the Facebook login target through Chromium's debugging HTTP endpoint before falling back to CDP navigation, avoiding renderer wait during login preparation.
