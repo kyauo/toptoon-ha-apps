@@ -216,6 +216,17 @@ def _toptoon_auth_probe_http(d):
     if isinstance(body,dict) and body.get('errorType')=='login':return 'login_required',msg or '로그인이 필요합니다.'
     return 'unknown',msg
 
+def _toptoon_auth_probe_session(sess):
+    t=time.monotonic()
+    r=sess.post('https://toptoon.com/event/attendance',data={'ci_token':'null'},headers={'Accept':'application/json, text/javascript, */*; q=0.01','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Origin':'https://toptoon.com','Referer':PAGE_URL},timeout=(5,12))
+    log('INFO',f'Login assist: direct Toptoon auth probe with login session returned HTTP {r.status_code} after {time.monotonic()-t:.1f}s.')
+    try:body=r.json()
+    except Exception:return 'probe_error',f'HTTP {r.status_code}: {r.text[:180]}'
+    msg=str(body.get('message') or '') if isinstance(body,dict) else ''
+    if isinstance(body,dict) and (body.get('result') is True or '이미 출석' in msg):return 'logged_in',msg or 'Toptoon 세션에서 로그인이 확인되었습니다.'
+    if isinstance(body,dict) and body.get('errorType')=='login':return 'login_required',msg or '로그인이 필요합니다.'
+    return 'unknown',msg
+
 def _open_chrome_url_http(url):
     """Open a URL through Chromium's debugging HTTP endpoint without waiting on the renderer."""
     q=quote(url,safe='')
@@ -233,23 +244,9 @@ def _open_chrome_url_http(url):
     return False
 
 def prepare_login():
-    with BROWSER_LOCK:
-        t0=time.monotonic()
-        try:
-            d=browser_driver(); log('INFO','Login assist: attached to persistent Chromium; using browser-level CDP/direct HTTP path.')
-            try:auth,msg=_toptoon_auth_probe_http(d)
-            except Exception as e:
-                log('WARNING',f'Login assist: direct auth probe failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:180]}'); return 'probe_error','Toptoon 로그인 확인 HTTP 요청에 실패했습니다.'
-            if auth=='logged_in':
-                save_status(login_state='logged_in',login_message='Toptoon 서버에서 Chromium 쿠키 로그인이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds')); return 'logged_in','Toptoon 서버에서 이미 로그인 상태임을 확인했습니다.'
-            save_status(login_state='login_required',login_message=msg or 'Toptoon 로그인이 필요합니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-            login_url='https://toptoon.com/alert/auth/login?redirect=/event/attendance'
-            log('INFO',f'Login assist: opening Toptoon ID login page via Chrome debug HTTP after {time.monotonic()-t0:.1f}s.')
-            if not _open_chrome_url_http(login_url):
-                d.execute_cdp_cmd('Page.navigate', {'url':login_url})
-            return 'login_ready','Toptoon ID 로그인 페이지로 이동을 요청했습니다. ID와 비밀번호를 입력하세요.'
-        except Exception as e:
-            log('WARNING',f'Login assist prepare failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}'); return 'browser_error',f'로그인 준비 실패: {type(e).__name__}'
+    save_status(login_state='login_ready',login_message='Toptoon ID/비밀번호 직접 로그인을 사용할 준비가 되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+    log('INFO','Login assist: Toptoon ID/password direct login is ready; Chromium is not touched during preparation.')
+    return 'login_ready','Toptoon ID와 비밀번호를 입력한 뒤 로그인 제출을 누르세요.'
 
 def _verify_login_after_submit():
     """Verify Toptoon login without touching the slow login renderer."""
@@ -296,16 +293,24 @@ def submit_toptoon_login(user,password):
             except Exception:return 'invalid_response',f'로그인 응답을 JSON으로 읽지 못했습니다: HTTP {r.status_code}'
             msg=str(body.get('message') or body.get('alert') or '') if isinstance(body,dict) else ''
             if isinstance(body,dict) and body.get('result'):
-                with BROWSER_LOCK:
-                    d=browser_driver()
-                    copied=_copy_requests_cookies_to_browser(d,sess)
-                    state,probe_msg=_toptoon_auth_probe_http(d)
-                if state=='logged_in':
-                    save_status(login_state='logged_in',login_message='Toptoon ID 로그인 및 Chromium 세션 저장이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-                    log('INFO',f'Login assist: Toptoon ID login persisted {copied} cookies and auth probe confirmed login.')
-                    return 'logged_in','Toptoon ID 로그인 성공. Chromium 세션에 저장했습니다.'
-                save_status(login_state='verification_needed',login_message=f'Toptoon ID 로그인 응답은 성공했지만 인증 확인은 아직 필요합니다: {probe_msg}',status_checked_at=now_local().isoformat(timespec='seconds'))
-                return 'verification_needed',f'로그인 응답은 성공했지만 Toptoon 인증 확인이 필요합니다: {probe_msg}'
+                state,probe_msg=_toptoon_auth_probe_session(sess)
+                if state!='logged_in':
+                    save_status(login_state='verification_needed',login_message=f'Toptoon ID 로그인 응답은 성공했지만 인증 확인은 아직 필요합니다: {probe_msg}',status_checked_at=now_local().isoformat(timespec='seconds'))
+                    return 'verification_needed',f'로그인 응답은 성공했지만 Toptoon 인증 확인이 필요합니다: {probe_msg}'
+                copied=0
+                try:
+                    with BROWSER_LOCK:
+                        d=browser_driver()
+                        try:d.command_executor.set_timeout(8)
+                        except Exception:pass
+                        copied=_copy_requests_cookies_to_browser(d,sess)
+                except Exception as e:
+                    log('WARNING',f'Login assist: login succeeded but Chromium cookie persistence failed: {type(e).__name__}: {str(e)[:180]}')
+                    save_status(login_state='verification_needed',login_message='Toptoon ID 로그인은 성공했지만 Chromium 세션 저장이 실패했습니다. 앱을 재시작하거나 로그인 브라우저 수동 로그인이 필요할 수 있습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+                    return 'verification_needed','Toptoon ID 로그인은 성공했지만 Chromium 세션 저장이 실패했습니다.'
+                save_status(login_state='logged_in',login_message='Toptoon ID 로그인 및 Chromium 세션 저장이 확인되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+                log('INFO',f'Login assist: Toptoon ID login persisted {copied} cookies after direct auth probe confirmed login.')
+                return 'logged_in','Toptoon ID 로그인 성공. Chromium 세션에 저장했습니다.'
             if isinstance(body,dict) and body.get('result')=='PW_FALSE':
                 return 'login_failed',msg or '비밀번호가 맞지 않습니다.'
             if msg and 'Captcha' in msg:

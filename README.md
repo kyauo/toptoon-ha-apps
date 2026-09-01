@@ -1,3 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.14
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.15
 
-v0.5.14는 Facebook MFA 경로를 기본 로그인에서 제외하고, Toptoon ID/비밀번호를 `/login/login_proc`에 직접 제출한 뒤 성공 쿠키를 persistent Chromium 세션에 저장하는 버전입니다. 인증 확인은 기존처럼 direct attendance AJAX 응답으로 판정합니다.
+v0.5.15는 Toptoon ID/비밀번호 직접 로그인에서 준비 단계를 Chromium 비의존 즉시 반환으로 바꾸고, direct login 성공 여부를 requests 세션의 attendance probe로 먼저 확인한 뒤 Chromium cookie persistence를 짧게 시도하는 버전입니다.

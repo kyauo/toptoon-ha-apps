@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.14
+# Toptoon Attendance Bot v0.5.15
+
+## v0.5.15
+- Changed login preparation to return immediately without touching Chromium; Toptoon ID login no longer needs a browser page preparation step.
+- Verifies successful ID/password login with a direct requests-session attendance probe before trying to persist cookies to Chromium.
+- Keeps Chromium cookie persistence on a short timeout so a slow renderer cannot hide the direct login result.
+- Synchronized visible version strings to 0.5.15.
 
 ## v0.5.14
 - Replaced Facebook quick login with direct Toptoon ID/password login via `/login/login_proc`.

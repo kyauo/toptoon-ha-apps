@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.14
+# Toptoon Attendance Bot v0.5.15
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.15
+- 로그인 준비 단계가 Chromium을 건드리지 않고 즉시 반환합니다.
+- Toptoon ID/비밀번호 로그인 성공 여부를 requests 세션의 direct attendance probe로 먼저 확인합니다.
+- Chromium 세션 저장은 짧은 timeout으로만 시도해 느린 renderer가 로그인 결과를 가리지 않게 했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.15로 통일했습니다.
 
 ## v0.5.14
 - Facebook quick login 대신 Toptoon ID/비밀번호 직접 로그인을 사용합니다.
@@ -23,4 +29,4 @@ Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
 - 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.12로 통일했습니다.
 
 ## 로그인 갱신
-`Toptoon 로그인 화면 준비` 후 Toptoon ID와 비밀번호를 입력하고 제출합니다. Toptoon 서버 인증이 확인되면 `로그인 유지됨`으로 갱신됩니다. CAPTCHA 또는 추가 계정 확인이 필요한 경우에만 로그인 브라우저를 사용하세요.
+Toptoon ID와 비밀번호를 입력하고 제출합니다. 준비 버튼은 브라우저를 열지 않고 직접 로그인 준비 상태만 갱신합니다. Toptoon 서버 인증이 확인되면 `로그인 유지됨`으로 갱신됩니다. CAPTCHA 또는 추가 계정 확인이 필요한 경우에만 로그인 브라우저를 사용하세요.
