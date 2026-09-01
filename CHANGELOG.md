@@ -1,4 +1,18 @@
-# Toptoon Attendance Bot v0.5.20
+# Toptoon Attendance Bot v0.5.22
+
+## v0.5.22
+- Changed Toptoon ID login submission from direct HTTP POST to real Chromium browser input using the virtual display, clipboard, and keyboard events.
+- The login preparation button now opens the actual Toptoon ID login page in Chromium.
+- Background verification still checks Toptoon authentication after the browser submits the form.
+- Updated UI copy to distinguish browser-input login from the earlier direct-request login path.
+- Kept legacy `phpsessid` and `rm_session` schema compatibility while startup cleanup removes stored values from Supervisor options.
+- Synchronized visible version strings to 0.5.22.
+
+## v0.5.21
+- Manual attendance test now skips the slow browser-cookie path immediately when the saved login state is already `login_required` or `login_failed`.
+- Added redirect-HTML diagnostics for Toptoon ID login, following `/` with the same session and logging `user_idx` plus Toptoon cookie names.
+- Kept scheduled attendance checks on the full browser-cookie path so existing persistent sessions can still recover automatically.
+- Synchronized visible version strings to 0.5.21.
 
 ## v0.5.20
 - Changed the login status button to a fast saved-state check so it no longer attaches to slow Chromium/Selenium.

@@ -1,6 +1,20 @@
-# Toptoon Attendance Bot v0.5.20
+# Toptoon Attendance Bot v0.5.22
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.22
+- Toptoon ID 로그인 제출을 HTTP 직접 요청 방식에서 실제 Chromium 브라우저 자동 입력 방식으로 바꿨습니다.
+- 로그인 화면 준비 버튼이 Chromium에 실제 Toptoon ID 로그인 페이지를 엽니다.
+- 로그인 제출 버튼은 가상 브라우저의 입력칸에 ID와 비밀번호를 붙여넣고 Enter를 보내며, 이후 백그라운드에서 Toptoon 인증 상태를 확인합니다.
+- UI 문구를 브라우저 자동 입력 방식에 맞게 정리했습니다.
+- `phpsessid`, `rm_session`은 Supervisor 검증 호환용 schema에만 남아 있고, 저장된 값은 시작 시 cleanup으로 제거합니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.22로 통일했습니다.
+
+## v0.5.21
+- 저장된 로그인 상태가 이미 `login_required` 또는 `login_failed`이면 수동 출석 테스트가 Chromium 쿠키 확인을 건너뛰고 즉시 멈춥니다.
+- Toptoon ID 로그인에서 redirect HTML이 반환되면 같은 세션으로 `/`를 따라가 `user_idx`와 Toptoon cookie 이름을 로그에 남깁니다.
+- 자동 스케줄 출석은 기존 persistent Chromium 세션 회복 가능성을 위해 전체 브라우저 쿠키 경로를 유지합니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.21로 통일했습니다.
 
 ## v0.5.20
 - 로그인 상태 확인 버튼이 Chromium/Selenium에 붙지 않고 저장된 최근 상태를 즉시 보여줍니다.
@@ -58,4 +72,4 @@ Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
 - 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.12로 통일했습니다.
 
 ## 로그인 갱신
-Toptoon ID와 비밀번호를 입력하고 제출합니다. 준비 버튼은 브라우저를 열지 않고 직접 로그인 준비 상태만 갱신합니다. Toptoon 서버 인증이 확인되면 `로그인 유지됨`으로 갱신됩니다. CAPTCHA 또는 추가 계정 확인이 필요한 경우에만 로그인 브라우저를 사용하세요.
+Toptoon ID와 비밀번호를 입력하고 제출합니다. 준비 버튼은 Chromium에 실제 Toptoon ID 로그인 화면을 열고, 제출 버튼은 그 화면의 입력칸에 ID와 비밀번호를 붙여넣은 뒤 Enter를 보냅니다. Toptoon 서버 인증이 확인되면 `로그인 유지됨`으로 갱신됩니다. CAPTCHA, 좌표 불일치, 추가 계정 확인이 필요한 경우에는 로그인 브라우저에서 직접 마무리하세요.
