@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.25
+# Toptoon Attendance Bot v0.5.26
+
+## v0.5.26
+- Changed the browser login redirect from `/event/attendance` to `/` so a successful login does not immediately load the heavy attendance page.
+- Added a browser-cookie login check action that reads Chromium cookies through CDP and verifies login with a lightweight Toptoon home HTML request.
+- Added a UI button for checking browser-cookie login state without rendering the heavy attendance page or submitting attendance.
+- Synchronized visible version strings to 0.5.26.
 
 ## v0.5.25
 - Changed the lightweight Xvfb display from 640x480x8 to 640x480x16 because 8-bit color can render as a black screen in Chromium/noVNC.

@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.25
+# Toptoon Attendance Bot v0.5.26
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.26
+- 로그인 성공 직후 무거운 `/event/attendance` 페이지로 이동하지 않도록 브라우저 로그인 redirect를 `/`로 바꿨습니다.
+- Chromium 화면이 느리거나 크래시되어도 CDP로 쿠키만 읽고 Toptoon 홈 HTML을 가볍게 요청해 로그인 여부를 확인하는 기능을 추가했습니다.
+- 출석 요청 없이 브라우저 쿠키 로그인 상태를 확인하는 UI 버튼을 추가했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.26으로 통일했습니다.
 
 ## v0.5.25
 - Chromium/noVNC에서 까만 화면이 나올 수 있어 Xvfb를 640x480x8에서 640x480x16으로 되돌렸습니다.
