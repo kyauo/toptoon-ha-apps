@@ -1,3 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.19
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.20
 
-v0.5.19는 Supervisor에 과거 저장된 `phpsessid`/`rm_session` 옵션을 시작 시 자동 제거하는 migration을 포함합니다. 앱의 로그인과 인증 판정은 계속 Toptoon ID 로그인과 direct attendance AJAX 응답을 사용합니다.
+v0.5.20은 로그인 상태 확인 버튼을 느린 Chromium/Selenium 검사 대신 저장된 상태를 즉시 보여주는 경로로 바꾼 버전입니다. 실제 Toptoon 서버 인증 확인은 기존처럼 direct attendance AJAX 응답을 사용합니다.

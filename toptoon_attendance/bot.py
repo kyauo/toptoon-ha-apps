@@ -1,4 +1,4 @@
-import html, json, os, subprocess, threading, time
+import html, json, os, subprocess, threading, time, warnings
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -99,9 +99,16 @@ def cleanup_legacy_options():
 def browser_driver():
     opts=Options(); opts.page_load_strategy='none'; opts.add_experimental_option('debuggerAddress','127.0.0.1:9222'); opts.binary_location='/usr/bin/chromium-browser'
     d=webdriver.Chrome(service=Service('/usr/bin/chromedriver'),options=opts)
-    try:d.command_executor.set_timeout(18)
-    except Exception:pass
+    set_driver_timeout(d,18)
     return d
+
+def set_driver_timeout(d,seconds):
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore',DeprecationWarning)
+            d.command_executor.set_timeout(seconds)
+    except Exception:
+        pass
 def page_text(d):
     try:return d.find_element(By.TAG_NAME,'body').text
     except Exception:return ''
@@ -129,24 +136,18 @@ def is_login_required(d):
     return login_probe(d)=='login_required'
 
 def inspect_page():
-    with BROWSER_LOCK:
-        t0=time.monotonic()
-        try:
-            d=browser_driver(); d.set_page_load_timeout(18)
-            if 'toptoon.com' not in d.current_url.lower():
-                try:d.get(PAGE_URL)
-                except TimeoutException:
-                    try:d.execute_script('window.stop();')
-                    except Exception:pass
-            probe=login_probe(d)
-            if probe=='login_required': state,msg='login_required','Toptoon 로그인이 필요합니다.'
-            elif probe=='logged_in': state,msg='logged_in','Toptoon 로그인 상태가 DOM에서 확인되었습니다.'
-            elif probe=='probably_logged_in': state,msg='probably_logged_in','로그인 세션 쿠키가 있습니다. 실제 출석 요청으로 최종 확인됩니다.'
-            else: state,msg='unknown','로그인 여부를 확정하지 못했습니다. 실제 출석 테스트로 확인해 주세요.'
-            save_status(login_state=state,login_message=msg,status_checked_at=now_local().isoformat(timespec='seconds'))
-            log('INFO',f'Status check after {time.monotonic()-t0:.1f}s: {state} / {msg}'); return state,msg
-        except Exception as e:
-            msg=str(e)[:400]; save_status(login_state='browser_error',login_message=msg,status_checked_at=now_local().isoformat(timespec='seconds')); log('WARNING',f'Status check failed: {msg}'); return 'browser_error',msg
+    st=load_json(STATUS_PATH,{})
+    state=st.get('login_state') or 'unknown'
+    msg=st.get('login_message') or '저장된 로그인 상태가 없습니다. 로그인 제출 또는 출석 테스트로 확인해 주세요.'
+    if state=='logged_in':
+        msg='저장된 상태는 로그인 유지입니다. 실제 확인은 출석 테스트가 가장 정확합니다.'
+    elif state in ('login_required','login_failed'):
+        msg=msg or '저장된 상태는 로그인 필요입니다.'
+    elif state=='login_ready':
+        msg='Toptoon ID/비밀번호 직접 로그인을 사용할 준비가 되어 있습니다.'
+    save_status(status_checked_at=now_local().isoformat(timespec='seconds'))
+    log('INFO',f'Fast status check from saved state: {state} / {msg}')
+    return state,msg
 
 def check_attendance():
     with BROWSER_LOCK:
@@ -216,7 +217,7 @@ def render_ui(message='',kind=''):
 :root{{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}body{{margin:0;background:#f4f5f7;color:#202124}}.wrap{{max-width:720px;margin:0 auto;padding:20px;position:relative}}.card{{background:white;border-radius:16px;padding:20px;box-shadow:0 2px 10px #0001;margin-bottom:16px}}h1{{font-size:24px;margin:0 36px 6px 0}}p{{line-height:1.55}}.close{{position:absolute;right:25px;top:22px;border:0;background:transparent;font-size:28px;cursor:pointer;color:#666}}.badge{{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;font-size:13px}}.good{{background:#e8f5e9;color:#1b5e20}}.bad{{background:#ffebee;color:#b71c1c}}.neutral{{background:#eceff1;color:#455a64}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}}.item{{border:1px solid #e5e7eb;border-radius:12px;padding:13px}}.label{{color:#6b7280;font-size:12px}}.value{{font-size:17px;font-weight:700;margin-top:4px}}.actions{{display:grid;gap:10px}}button,.btn{{width:100%;box-sizing:border-box;border:0;border-radius:11px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:block}}button:disabled{{opacity:.65;cursor:wait}}.primary{{background:#e53935;color:white}}.secondary{{background:#e8eaed;color:#202124}}.danger{{background:#fff3e0;color:#bf360c}}.busy{{display:none;margin-top:12px;border-radius:10px;padding:12px;background:#e3f2fd;color:#0d47a1;font-weight:700}}.note{{color:#5f6368;font-size:13px}}.okmsg,.warnmsg{{border-radius:10px;padding:12px;margin:12px 0}}.okmsg{{background:#e8f5e9}}.warnmsg{{background:#fff3e0}}@media(prefers-color-scheme:dark){{body{{background:#111827;color:#f3f4f6}}.card{{background:#1f2937}}.item{{border-color:#374151}}.secondary{{background:#374151;color:#f3f4f6}}.note,.label{{color:#9ca3af}}.close{{color:#d1d5db}}}}</style></head><body><div class="wrap">
 <button class="close" onclick="try{{window.parent.location.href='/'}}catch(e){{history.back()}}">×</button><div class="card"><h1>Toptoon Attendance Bot</h1><p>평소에는 이 화면에서 상태만 확인하면 됩니다. <b>로그인 브라우저는 Toptoon 로그인이 풀렸을 때만</b> 열어 주세요. 브라우저 프로필은 앱 재시작 후에도 유지됩니다.</p>{alert}<span class="badge {badge[0]}">{badge[1]}</span><div class="grid"><div class="item"><div class="label">오늘 출석</div><div class="value">{html.escape(str(st.get('today_status','아직 확인 안 함')))}</div></div><div class="item"><div class="label">마지막 상태 확인</div><div class="value" style="font-size:13px">{html.escape(fmt_time(st.get('status_checked_at')))}</div></div></div></div>
 <div class="card"><b>빠른 Toptoon ID 로그인</b><p class="note">Facebook MFA를 거치지 않고 Toptoon ID/비밀번호로 직접 로그인합니다. 비밀번호는 저장하거나 로그에 남기지 않습니다. 자동입력 방지문자가 필요하면 로그인 브라우저로 전환하세요.</p><div class="actions"><button class="secondary" id="prepBtn" onclick="loginPrepare(this)">Toptoon 로그인 화면 준비</button></div><div style="display:grid;gap:8px;margin-top:10px"><input id="fbid" autocomplete="username" placeholder="Toptoon 이메일 또는 휴대폰 번호" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><input id="fbpw" type="password" autocomplete="current-password" placeholder="Toptoon 비밀번호" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><button class="primary" id="loginBtn" onclick="loginSubmit(this)">Toptoon 로그인 제출</button><div id="loginMsg" class="note"></div></div></div>
-<div class="card"><div class="actions"><button id="checkBtn" class="primary" onclick="runAction('check',this)">지금 로그인 상태 확인</button><button id="attBtn" class="danger" onclick="if(confirm('오늘 미출석이면 실제 출석 요청을 실행합니다. 계속할까요?'))runAction('attendance',this)">지금 출석 테스트</button><a id="vncBtn" class="btn secondary" href="login-console">로그인 브라우저 열기</a></div><div id="busy" class="busy">처리 중... 잠시 기다려 주세요.</div><p class="note">로그인을 마치면 브라우저를 그냥 닫아도 됩니다. 로그인 상태는 /data/chromium-profile에 보존됩니다.</p></div>
+<div class="card"><div class="actions"><button id="checkBtn" class="primary" onclick="runAction('check',this)">저장된 로그인 상태 확인</button><button id="attBtn" class="danger" onclick="if(confirm('오늘 미출석이면 실제 출석 요청을 실행합니다. 계속할까요?'))runAction('attendance',this)">지금 출석 테스트</button><a id="vncBtn" class="btn secondary" href="login-console">로그인 브라우저 열기</a></div><div id="busy" class="busy">처리 중... 잠시 기다려 주세요.</div><p class="note">실제 Toptoon 서버 인증 확인은 출석 테스트가 가장 정확합니다. 로그인 상태 확인은 저장된 최근 상태만 빠르게 보여줍니다.</p></div>
 <div class="card"><b>자동 실행</b><p class="note">매일 {o.get('run_time','00:30')} ({o.get('timezone','Asia/Seoul')}) · 재시도 +{o.get('retry_1_minutes',5)}분 / +{o.get('retry_2_minutes',15)}분 · 실패 확인 {o.get('mobile_alert_time','09:05')} · 수동 확인 알림 {o.get('manual_reminder_time','21:00')}</p><div class="label">마지막 출석 실행</div><div>{html.escape(fmt_time(st.get('last_run_at')))}</div><div class="label" style="margin-top:10px">마지막 결과</div><div><b>{html.escape(str(st.get('last_result','아직 없음')))}</b> {html.escape(str(st.get('last_message','')))}</div></div></div>
 	<script>let loginSubmitInFlight=false;async function postLogin(doit,extra={{}}){{let q=new URLSearchParams();q.set('do',doit);for(const [k,v] of Object.entries(extra))q.set(k,v);let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store'}});return await r.json()}}async function loginPrepare(b){{let m=document.getElementById('loginMsg');b.disabled=true;m.textContent='Toptoon 로그인 화면 준비 중...';let ctl=new AbortController();let tm=setTimeout(()=>ctl.abort(),35000);try{{let q=new URLSearchParams();q.set('do','login_prepare');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store',signal:ctl.signal}});let j=await r.json();m.textContent=j.message||j.state;if(j.state==='logged_in')setTimeout(()=>location.reload(),700)}}catch(e){{m.textContent=e.name==='AbortError'?'35초 안에 준비가 끝나지 않았습니다. 로그인 브라우저를 열어 수동으로 진행해 주세요.':'로그인 화면 준비 요청 실패'}}finally{{clearTimeout(tm);b.disabled=false}}}}async function loginSubmit(b){{let m=document.getElementById('loginMsg'),u=document.getElementById('fbid'),p=document.getElementById('fbpw');if(loginSubmitInFlight){{m.textContent='이미 로그인 제출을 처리 중입니다.';return}}if(!u.value||!p.value){{m.textContent='ID와 비밀번호를 모두 입력해 주세요.';return}}loginSubmitInFlight=true;b.disabled=true;m.textContent='Toptoon 로그인 제출 중...';try{{let j=await postLogin('login_submit',{{user:u.value,password:p.value}});p.value='';m.textContent=j.message||j.state;if(j.state==='logged_in'||j.state==='verifying')setTimeout(()=>location.reload(),2500)}}catch(e){{p.value='';m.textContent='로그인 제출 요청 실패'}}finally{{loginSubmitInFlight=false;b.disabled=false}}}}async function runAction(a,b){{let c=document.getElementById('checkBtn'),d=document.getElementById('attBtn'),v=document.getElementById('vncBtn'),x=document.getElementById('busy');c.disabled=d.disabled=true;v.style.pointerEvents='none';v.style.opacity='.6';x.style.display='block';b.textContent=a==='attendance'?'출석 처리 중...':'상태 확인 중...';let done=false;let w=setTimeout(()=>{{if(!done)location.reload()}},125000);let ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),120000);try{{let q=new URLSearchParams();q.set('do',a);q.set('ajax','1');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'}},body:q,signal:ctl.signal,cache:'no-store'}});let j=await r.json();done=true;clearTimeout(w);clearTimeout(t);x.textContent=(j.message||j.state||'완료');setTimeout(()=>location.reload(),900)}}catch(e){{done=true;clearTimeout(w);clearTimeout(t);x.textContent='요청이 시간 초과되었거나 연결이 끊겼습니다.';setTimeout(()=>location.reload(),1200)}}}}</script></body></html>'''
 
@@ -279,8 +280,7 @@ def _persist_verified_login_session(sess):
     try:
         with BROWSER_LOCK:
             d=browser_driver()
-            try:d.command_executor.set_timeout(8)
-            except Exception:pass
+            set_driver_timeout(d,8)
             copied=_copy_requests_cookies_to_browser(d,sess)
     except Exception as e:
         log('WARNING',f'Login assist: login succeeded but Chromium cookie persistence failed: {type(e).__name__}: {str(e)[:180]}')
@@ -344,6 +344,7 @@ def submit_toptoon_login(user,password):
                 if state=='logged_in':
                     return _persist_verified_login_session(sess)
                 if '로그인' in probe_msg:
+                    save_status(login_state='login_required',login_message='Toptoon이 redirect HTML을 반환했지만 출석 probe는 로그인 필요 상태입니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
                     return 'login_failed','Toptoon이 로그인 성공 JSON을 반환하지 않았고, 출석 probe도 로그인 필요 상태입니다.'
                 return 'invalid_response',f'로그인 응답은 HTML이고 인증 확인도 실패했습니다: {probe_msg}'
             body=parsed

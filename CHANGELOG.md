@@ -1,4 +1,11 @@
-# Toptoon Attendance Bot v0.5.19
+# Toptoon Attendance Bot v0.5.20
+
+## v0.5.20
+- Changed the login status button to a fast saved-state check so it no longer attaches to slow Chromium/Selenium.
+- Clarified in the UI that actual server authentication should be checked with the attendance test.
+- Records `login_required` when Toptoon returns redirect HTML and the follow-up attendance probe still reports login required.
+- Suppressed Selenium `set_timeout` deprecation noise while keeping short command timeouts.
+- Synchronized visible version strings to 0.5.20.
 
 ## v0.5.19
 - Added startup migration that removes stored legacy `phpsessid` and `rm_session` options from Supervisor's saved app configuration through the Supervisor options API.

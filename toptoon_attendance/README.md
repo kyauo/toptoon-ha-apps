@@ -1,6 +1,13 @@
-# Toptoon Attendance Bot v0.5.19
+# Toptoon Attendance Bot v0.5.20
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.20
+- 로그인 상태 확인 버튼이 Chromium/Selenium에 붙지 않고 저장된 최근 상태를 즉시 보여줍니다.
+- 실제 Toptoon 서버 인증 확인은 출석 테스트로 확인하도록 UI 문구를 정리했습니다.
+- Toptoon이 redirect HTML을 반환하고 출석 probe도 로그인 필요를 반환하면 `login_required` 상태를 저장합니다.
+- Selenium `set_timeout` deprecation warning이 앱 로그를 어지럽히지 않도록 숨겼습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.20으로 통일했습니다.
 
 ## v0.5.19
 - 시작 시 Supervisor API를 통해 저장된 legacy `phpsessid`, `rm_session` 옵션을 제거합니다.
