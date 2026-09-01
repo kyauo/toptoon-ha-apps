@@ -2,7 +2,7 @@ import html, json, os, subprocess, threading, time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, quote
 from zoneinfo import ZoneInfo
 import requests
 from selenium import webdriver
@@ -51,7 +51,10 @@ def dismiss_failure(): ha_service('persistent_notification','dismiss',{'notifica
 
 def browser_driver():
     opts=Options(); opts.page_load_strategy='none'; opts.add_experimental_option('debuggerAddress','127.0.0.1:9222'); opts.binary_location='/usr/bin/chromium-browser'
-    return webdriver.Chrome(service=Service('/usr/bin/chromedriver'),options=opts)
+    d=webdriver.Chrome(service=Service('/usr/bin/chromedriver'),options=opts)
+    try:d.command_executor.set_timeout(18)
+    except Exception:pass
+    return d
 def page_text(d):
     try:return d.find_element(By.TAG_NAME,'body').text
     except Exception:return ''
@@ -210,6 +213,22 @@ def _find_facebook_login_url():
     except Exception as e:log('WARNING',f'Login assist: direct HTML Facebook-link discovery failed: {type(e).__name__}: {str(e)[:160]}')
     return None
 
+def _open_chrome_url_http(url):
+    """Open a URL through Chromium's debugging HTTP endpoint without waiting on the renderer."""
+    q=quote(url,safe='')
+    for endpoint in (f'http://127.0.0.1:9222/json/new?{q}',f'http://127.0.0.1:9222/json/new?url={q}'):
+        try:
+            r=requests.put(endpoint,timeout=(1,4))
+            if r.status_code in (200,201):return True
+        except Exception:
+            pass
+        try:
+            r=requests.get(endpoint,timeout=(1,4))
+            if r.status_code in (200,201):return True
+        except Exception:
+            pass
+    return False
+
 def prepare_facebook_login():
     with BROWSER_LOCK:
         t0=time.monotonic()
@@ -223,8 +242,9 @@ def prepare_facebook_login():
             save_status(login_state='login_required',login_message=msg or 'Toptoon 로그인이 필요합니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
             fb=_find_facebook_login_url()
             if not fb:return 'login_control_missing','Toptoon HTML에서 Facebook 로그인 주소를 찾지 못했습니다. 로그인 브라우저에서 확인해 주세요.'
-            log('INFO',f'Login assist: navigating Chromium to discovered Facebook login target after {time.monotonic()-t0:.1f}s.')
-            d.execute_cdp_cmd('Page.navigate', {'url':fb})
+            log('INFO',f'Login assist: opening discovered Facebook login target via Chrome debug HTTP after {time.monotonic()-t0:.1f}s.')
+            if not _open_chrome_url_http(fb):
+                d.execute_cdp_cmd('Page.navigate', {'url':fb})
             return 'facebook_ready','Facebook 로그인 페이지로 이동을 요청했습니다. ID와 비밀번호를 입력하세요.'
         except Exception as e:
             log('WARNING',f'Login assist prepare failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}'); return 'browser_error',f'로그인 준비 실패: {type(e).__name__}'
@@ -305,6 +325,8 @@ def submit_facebook_login(user,password):
   }
   return {ok:false, reason:"fields_not_found"};
 })()""".replace('USER_VALUE',json.dumps(user)).replace('PASS_VALUE',json.dumps(password))
+                try:d.command_executor.set_timeout(18)
+                except Exception:pass
                 result=d.execute_cdp_cmd('Runtime.evaluate',{'expression':script,'returnByValue':True,'awaitPromise':False,'userGesture':True})
                 value=((result.get('result') or {}).get('value') or {}) if isinstance(result,dict) else {}
                 if not value.get('ok'):
@@ -317,7 +339,8 @@ def submit_facebook_login(user,password):
                 return 'verifying','Facebook 로그인 제출 완료. Toptoon 로그인 여부를 백그라운드에서 확인합니다.'
             except Exception as e:
                 log('WARNING',f'Login assist submit failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}')
-                return 'browser_error',f'로그인 제출 실패: {type(e).__name__}'
+                save_status(login_state='manual_needed',login_message='자동 제출 명령이 Chromium에서 빠르게 응답하지 않았습니다. 로그인 브라우저에서 수동으로 제출해 주세요.',status_checked_at=now_local().isoformat(timespec='seconds'))
+                return 'manual_needed','자동 제출 명령이 18초 안에 끝나지 않았습니다. 로그인 브라우저를 열어 수동으로 제출해 주세요.'
     finally:
         LOGIN_SUBMIT_LOCK.release()
 

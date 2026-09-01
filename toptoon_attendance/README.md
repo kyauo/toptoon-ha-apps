@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.12
+# Toptoon Attendance Bot v0.5.13
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.13
+- Facebook 로그인 준비 이동을 Chromium debug HTTP endpoint로 먼저 처리합니다.
+- 자동 Facebook 제출이 renderer 대기에서 막히면 약 18초 안에 수동 로그인 브라우저 안내로 전환합니다.
+- 자동 제출 실패 상태를 일반 요청 실패가 아니라 `manual_needed`로 기록합니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.13으로 통일했습니다.
 
 ## v0.5.12
 - Facebook 로그인 제출 중복 요청을 서버 측 lock으로 차단합니다.

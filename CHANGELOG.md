@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.12
+# Toptoon Attendance Bot v0.5.13
+
+## v0.5.13
+- Open the Facebook login target through Chromium's debugging HTTP endpoint before falling back to CDP navigation, avoiding renderer wait during login preparation.
+- Cap Selenium command waits so failed automatic Facebook submit returns in about 18 seconds instead of hanging for two minutes.
+- When automatic submit times out, update status to `manual_needed` and direct the user to the login browser instead of leaving a generic request failure.
+- Synchronized visible version strings to 0.5.13.
 
 ## v0.5.12
 - Added a server-side duplicate-submit guard for quick Facebook login.
