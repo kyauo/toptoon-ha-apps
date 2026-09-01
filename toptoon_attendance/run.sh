@@ -3,6 +3,7 @@ set -euo pipefail
 
 export DISPLAY=:99
 PROFILE_DIR=/data/chromium-profile
+LOGIN_URL="https://toptoon.com/alert/auth/login?redirect=/event/attendance"
 mkdir -p "$PROFILE_DIR"
 
 ts() { date '+%Y-%m-%d %H:%M:%S %Z'; }
@@ -53,8 +54,8 @@ dump_log() {
   fi
 }
 
-log INFO "Launching Xvfb display :99..."
-Xvfb :99 -screen 0 1024x720x16 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
+log INFO "Launching lightweight Xvfb display :99..."
+Xvfb :99 -screen 0 640x480x8 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
 XVFB_PID=$!
 sleep 1
 if ! kill -0 "$XVFB_PID" 2>/dev/null; then dump_log "Xvfb" /tmp/xvfb.log; exit 1; fi
@@ -67,26 +68,34 @@ chromium-browser \
   --no-sandbox \
   --disable-dev-shm-usage \
   --disable-gpu \
+  --disable-3d-apis \
   --disable-background-networking \
   --disable-background-timer-throttling \
   --disable-backgrounding-occluded-windows \
   --disable-renderer-backgrounding \
   --disable-component-update \
-  --disable-features=Translate,OptimizationHints,SmoothScrolling \
+  --disable-extensions \
+  --disable-notifications \
+  --disable-sync \
+  --mute-audio \
+  --renderer-process-limit=2 \
+  --process-per-site \
+  --blink-settings=imagesEnabled=false \
+  --disable-features=Translate,OptimizationHints,SmoothScrolling,MediaRouter,AutofillServerCommunication \
   --wm-window-animations-disabled \
   --no-first-run \
   --no-default-browser-check \
   --user-data-dir="$PROFILE_DIR" \
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port=9222 \
-  --window-size=1024,720 \
-  "about:blank" \
+  --window-size=640,480 \
+  "$LOGIN_URL" \
   >/tmp/chromium.log 2>&1 &
 CHROME_PID=$!
 if ! wait_port 9222 "Chromium remote debugging" 30; then dump_log "Chromium" /tmp/chromium.log; exit 1; fi
 
-log INFO "Launching x11vnc..."
-x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 -wait 20 -defer 20 -nap >/tmp/x11vnc.log 2>&1 &
+log INFO "Launching lightweight x11vnc..."
+x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 -wait 20 -defer 30 -nap -noxdamage -ncache 0 >/tmp/x11vnc.log 2>&1 &
 VNC_PID=$!
 if ! wait_port 5900 "x11vnc" 20; then dump_log "x11vnc" /tmp/x11vnc.log; exit 1; fi
 

@@ -1,4 +1,12 @@
-# Toptoon Attendance Bot v0.5.23
+# Toptoon Attendance Bot v0.5.24
+
+## v0.5.24
+- Reduced the virtual browser from 1024x720x16 to 640x480x8 to lower CPU and VNC rendering load.
+- Start Chromium on the Toptoon ID login page instead of `about:blank`.
+- Disabled image loading and more background Chromium features for the setup browser.
+- Lowered noVNC quality and increased compression for lighter remote browser viewing.
+- Updated UI copy to explain that images are intentionally disabled during login setup.
+- Synchronized visible version strings to 0.5.24.
 
 ## v0.5.23
 - Added Chromium login-page preparation fallback through the remote debugging endpoint and CDP navigation when xdotool cannot find or activate the visible Chromium window.

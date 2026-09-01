@@ -1,6 +1,14 @@
-# Toptoon Attendance Bot v0.5.23
+# Toptoon Attendance Bot v0.5.24
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.24
+- 가상 브라우저 화면을 1024x720x16에서 640x480x8로 낮춰 CPU와 VNC 렌더링 부담을 줄였습니다.
+- Chromium 시작 페이지를 `about:blank` 대신 Toptoon ID 로그인 페이지로 바꿨습니다.
+- 세팅 브라우저에서 이미지 로딩과 추가 백그라운드 기능을 끄도록 Chromium 옵션을 가볍게 조정했습니다.
+- noVNC 품질을 낮추고 압축을 높여 원격 브라우저 표시 부담을 줄였습니다.
+- 로그인 UI에 이미지가 의도적으로 꺼져 있음을 안내하도록 문구를 정리했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.24로 통일했습니다.
 
 ## v0.5.23
 - xdotool이 보이는 Chromium 창을 찾거나 활성화하지 못해도 remote debugging endpoint와 CDP navigation으로 Toptoon 로그인 페이지를 여는 fallback을 추가했습니다.

@@ -1,3 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.23
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.24
 
-v0.5.23은 세팅 단계에서 사용자가 Chromium을 보면서 직접 로그인할 수 있도록 정리한 버전입니다. 준비 버튼은 Chromium 창 활성화가 실패해도 디버그 포트/CDP로 Toptoon 로그인 페이지를 열고, 로그인은 VNC 브라우저에서 직접 진행합니다.
+v0.5.24는 HA 기기에서 Chromium 세팅 화면이 너무 무거운 문제를 줄이기 위해 저해상도/저색상 Xvfb, 이미지 차단 Chromium, 저품질 VNC 전송으로 바꾼 경량 브라우저 버전입니다.
