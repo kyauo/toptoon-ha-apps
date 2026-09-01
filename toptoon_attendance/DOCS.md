@@ -1,6 +1,13 @@
-# Toptoon Attendance Bot v0.5.22
+# Toptoon Attendance Bot v0.5.23
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.23
+- xdotool이 보이는 Chromium 창을 찾거나 활성화하지 못해도 remote debugging endpoint와 CDP navigation으로 Toptoon 로그인 페이지를 여는 fallback을 추가했습니다.
+- Chromium 창 class 탐색 범위를 `chromium-browser`와 non-visible window까지 넓혔습니다.
+- 세팅 중에는 하드코딩 좌표 자동 입력 대신 로그인 브라우저를 보면서 직접 로그인하는 흐름으로 바꿨습니다.
+- 로그인 카드에서 VNC 브라우저 콘솔을 바로 열 수 있게 했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.23으로 통일했습니다.
 
 ## v0.5.22
 - Toptoon ID 로그인 제출을 HTTP 직접 요청 방식에서 실제 Chromium 브라우저 자동 입력 방식으로 바꿨습니다.
@@ -72,4 +79,4 @@ Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
 - 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.12로 통일했습니다.
 
 ## 로그인 갱신
-Toptoon ID와 비밀번호를 입력하고 제출합니다. 준비 버튼은 Chromium에 실제 Toptoon ID 로그인 화면을 열고, 제출 버튼은 그 화면의 입력칸에 ID와 비밀번호를 붙여넣은 뒤 Enter를 보냅니다. Toptoon 서버 인증이 확인되면 `로그인 유지됨`으로 갱신됩니다. CAPTCHA, 좌표 불일치, 추가 계정 확인이 필요한 경우에는 로그인 브라우저에서 직접 마무리하세요.
+준비 버튼은 Chromium에 실제 Toptoon ID 로그인 화면을 엽니다. 그 다음 로그인 브라우저를 열어 화면을 보면서 직접 ID와 비밀번호를 입력하고 로그인합니다. Toptoon 서버 인증이 확인되면 `로그인 유지됨`으로 갱신됩니다. CAPTCHA 또는 추가 계정 확인이 떠도 같은 브라우저 안에서 처리하면 됩니다.

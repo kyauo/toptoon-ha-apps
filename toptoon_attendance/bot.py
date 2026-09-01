@@ -2,7 +2,7 @@ import html, json, os, subprocess, threading, time, warnings
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, quote
 from zoneinfo import ZoneInfo
 import requests
 from selenium import webdriver
@@ -134,11 +134,37 @@ def x_clip(text):
 def activate_chromium():
     for args in (
         ['xdotool','search','--onlyvisible','--class','chromium','windowactivate','--sync'],
+        ['xdotool','search','--onlyvisible','--class','chromium-browser','windowactivate','--sync'],
+        ['xdotool','search','--class','chromium','windowactivate','--sync'],
+        ['xdotool','search','--class','chromium-browser','windowactivate','--sync'],
         ['xdotool','search','--onlyvisible','--name','Chromium','windowactivate','--sync'],
     ):
         ok,msg=x_run(args,timeout=5)
         if ok:return True,''
     return False,msg or 'Chromium 창을 찾지 못했습니다.'
+
+def open_login_page_via_debug_port():
+    encoded=quote(LOGIN_URL,safe='')
+    for method,path in (
+        ('PUT',f'/json/new?{encoded}'),
+        ('GET',f'/json/new?{encoded}'),
+        ('PUT',f'/json/new?url={encoded}'),
+        ('GET',f'/json/new?url={encoded}'),
+    ):
+        try:
+            r=requests.request(method,f'http://127.0.0.1:9222{path}',timeout=3)
+            if r.status_code < 400:
+                log('INFO',f'Login assist: Chromium debug endpoint opened Toptoon login page with {method} {path[:18]}...')
+                return True,'Toptoon 로그인 페이지를 Chromium 브라우저에 열었습니다.'
+        except Exception:
+            pass
+    try:
+        d=browser_driver()
+        d.execute_cdp_cmd('Page.navigate',{'url':LOGIN_URL})
+        log('INFO','Login assist: Chromium CDP Page.navigate opened Toptoon login page.')
+        return True,'Toptoon 로그인 페이지를 Chromium 브라우저에 열었습니다.'
+    except Exception as e:
+        return False,f'{type(e).__name__}: {str(e)[:180]}'
 
 def paste_text_to_chromium_field(text):
     ok,msg=x_clip(text)
@@ -149,17 +175,19 @@ def paste_text_to_chromium_field(text):
     return True,''
 
 def open_toptoon_login_page():
-    ok,msg=activate_chromium()
-    if not ok:return False,msg
-    ok,msg=x_clip(LOGIN_URL)
-    if not ok:return False,msg or '로그인 URL을 가상 브라우저 클립보드에 전달하지 못했습니다.'
-    for key in ('ctrl+l','ctrl+v','Return'):
-        ok,msg=x_key(key)
-        if not ok:return False,msg or f'{key} 키 전달에 실패했습니다.'
-        time.sleep(0.12)
-    clear_x_clipboard_later(2)
-    log('INFO','Login assist: Chromium was navigated to the Toptoon ID login page through X input.')
-    return True,'Toptoon 로그인 페이지를 Chromium 브라우저에 열었습니다.'
+    active,msg=activate_chromium()
+    if active:
+        ok,msg=x_clip(LOGIN_URL)
+        if not ok:return False,msg or '로그인 URL을 가상 브라우저 클립보드에 전달하지 못했습니다.'
+        for key in ('ctrl+l','ctrl+v','Return'):
+            ok,msg=x_key(key)
+            if not ok:return False,msg or f'{key} 키 전달에 실패했습니다.'
+            time.sleep(0.12)
+        clear_x_clipboard_later(2)
+        log('INFO','Login assist: Chromium was navigated to the Toptoon ID login page through X input.')
+        return True,'Toptoon 로그인 페이지를 Chromium 브라우저에 열었습니다.'
+    log('WARNING',f'Login assist: xdotool could not activate Chromium, falling back to debug navigation: {msg}')
+    return open_login_page_via_debug_port()
 def page_text(d):
     try:return d.find_element(By.TAG_NAME,'body').text
     except Exception:return ''
@@ -273,7 +301,7 @@ def render_ui(message='',kind=''):
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Toptoon Attendance Bot</title><style>
 :root{{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}body{{margin:0;background:#f4f5f7;color:#202124}}.wrap{{max-width:720px;margin:0 auto;padding:20px;position:relative}}.card{{background:white;border-radius:16px;padding:20px;box-shadow:0 2px 10px #0001;margin-bottom:16px}}h1{{font-size:24px;margin:0 36px 6px 0}}p{{line-height:1.55}}.close{{position:absolute;right:25px;top:22px;border:0;background:transparent;font-size:28px;cursor:pointer;color:#666}}.badge{{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;font-size:13px}}.good{{background:#e8f5e9;color:#1b5e20}}.bad{{background:#ffebee;color:#b71c1c}}.neutral{{background:#eceff1;color:#455a64}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}}.item{{border:1px solid #e5e7eb;border-radius:12px;padding:13px}}.label{{color:#6b7280;font-size:12px}}.value{{font-size:17px;font-weight:700;margin-top:4px}}.actions{{display:grid;gap:10px}}button,.btn{{width:100%;box-sizing:border-box;border:0;border-radius:11px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:block}}button:disabled{{opacity:.65;cursor:wait}}.primary{{background:#e53935;color:white}}.secondary{{background:#e8eaed;color:#202124}}.danger{{background:#fff3e0;color:#bf360c}}.busy{{display:none;margin-top:12px;border-radius:10px;padding:12px;background:#e3f2fd;color:#0d47a1;font-weight:700}}.note{{color:#5f6368;font-size:13px}}.okmsg,.warnmsg{{border-radius:10px;padding:12px;margin:12px 0}}.okmsg{{background:#e8f5e9}}.warnmsg{{background:#fff3e0}}@media(prefers-color-scheme:dark){{body{{background:#111827;color:#f3f4f6}}.card{{background:#1f2937}}.item{{border-color:#374151}}.secondary{{background:#374151;color:#f3f4f6}}.note,.label{{color:#9ca3af}}.close{{color:#d1d5db}}}}</style></head><body><div class="wrap">
 <button class="close" onclick="try{{window.parent.location.href='/'}}catch(e){{history.back()}}">×</button><div class="card"><h1>Toptoon Attendance Bot</h1><p>평소에는 이 화면에서 상태만 확인하면 됩니다. <b>로그인 브라우저는 Toptoon 로그인이 풀렸을 때만</b> 열어 주세요. 브라우저 프로필은 앱 재시작 후에도 유지됩니다.</p>{alert}<span class="badge {badge[0]}">{badge[1]}</span><div class="grid"><div class="item"><div class="label">오늘 출석</div><div class="value">{html.escape(str(st.get('today_status','아직 확인 안 함')))}</div></div><div class="item"><div class="label">마지막 상태 확인</div><div class="value" style="font-size:13px">{html.escape(fmt_time(st.get('status_checked_at')))}</div></div></div></div>
-<div class="card"><b>Toptoon 브라우저 자동 입력</b><p class="note">Chromium의 실제 Toptoon 로그인 화면에 ID/비밀번호를 붙여넣고 제출합니다. 비밀번호는 저장하거나 로그에 남기지 않습니다. 화면 위치가 맞지 않거나 자동입력 방지문자가 나오면 로그인 브라우저에서 직접 마무리하세요.</p><div class="actions"><button class="secondary" id="prepBtn" onclick="loginPrepare(this)">Toptoon 로그인 화면 준비</button></div><div style="display:grid;gap:8px;margin-top:10px"><input id="fbid" autocomplete="username" placeholder="Toptoon 이메일 또는 휴대폰 번호" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><input id="fbpw" type="password" autocomplete="current-password" placeholder="Toptoon 비밀번호" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><button class="primary" id="loginBtn" onclick="loginSubmit(this)">Toptoon 로그인 제출</button><div id="loginMsg" class="note"></div></div></div>
+<div class="card"><b>Toptoon 브라우저 로그인 세팅</b><p class="note">Chromium에 실제 Toptoon 로그인 화면을 열고, 로그인 브라우저에서 보면서 직접 로그인합니다. 브라우저 안에서 로그인에 성공하면 이 세션이 저장됩니다.</p><div class="actions"><button class="secondary" id="prepBtn" onclick="loginPrepare(this)">Toptoon 로그인 화면 준비</button><a class="btn primary" href="login-console">로그인 브라우저에서 직접 로그인</a></div><div id="loginMsg" class="note" style="margin-top:10px"></div></div>
 <div class="card"><div class="actions"><button id="checkBtn" class="primary" onclick="runAction('check',this)">저장된 로그인 상태 확인</button><button id="attBtn" class="danger" onclick="if(confirm('오늘 미출석이면 실제 출석 요청을 실행합니다. 계속할까요?'))runAction('attendance',this)">지금 출석 테스트</button><a id="vncBtn" class="btn secondary" href="login-console">로그인 브라우저 열기</a></div><div id="busy" class="busy">처리 중... 잠시 기다려 주세요.</div><p class="note">실제 Toptoon 서버 인증 확인은 출석 테스트가 가장 정확합니다. 로그인 상태 확인은 저장된 최근 상태만 빠르게 보여줍니다.</p></div>
 <div class="card"><b>자동 실행</b><p class="note">매일 {o.get('run_time','00:30')} ({o.get('timezone','Asia/Seoul')}) · 재시도 +{o.get('retry_1_minutes',5)}분 / +{o.get('retry_2_minutes',15)}분 · 실패 확인 {o.get('mobile_alert_time','09:05')} · 수동 확인 알림 {o.get('manual_reminder_time','21:00')}</p><div class="label">마지막 출석 실행</div><div>{html.escape(fmt_time(st.get('last_run_at')))}</div><div class="label" style="margin-top:10px">마지막 결과</div><div><b>{html.escape(str(st.get('last_result','아직 없음')))}</b> {html.escape(str(st.get('last_message','')))}</div></div></div>
 	<script>let loginSubmitInFlight=false;async function postLogin(doit,extra={{}}){{let q=new URLSearchParams();q.set('do',doit);for(const [k,v] of Object.entries(extra))q.set(k,v);let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store'}});return await r.json()}}async function loginPrepare(b){{let m=document.getElementById('loginMsg');b.disabled=true;m.textContent='Toptoon 로그인 화면 준비 중...';let ctl=new AbortController();let tm=setTimeout(()=>ctl.abort(),35000);try{{let q=new URLSearchParams();q.set('do','login_prepare');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store',signal:ctl.signal}});let j=await r.json();m.textContent=j.message||j.state;if(j.state==='logged_in')setTimeout(()=>location.reload(),700)}}catch(e){{m.textContent=e.name==='AbortError'?'35초 안에 준비가 끝나지 않았습니다. 로그인 브라우저를 열어 수동으로 진행해 주세요.':'로그인 화면 준비 요청 실패'}}finally{{clearTimeout(tm);b.disabled=false}}}}async function loginSubmit(b){{let m=document.getElementById('loginMsg'),u=document.getElementById('fbid'),p=document.getElementById('fbpw');if(loginSubmitInFlight){{m.textContent='이미 로그인 제출을 처리 중입니다.';return}}if(!u.value||!p.value){{m.textContent='ID와 비밀번호를 모두 입력해 주세요.';return}}loginSubmitInFlight=true;b.disabled=true;m.textContent='Toptoon 로그인 제출 중...';try{{let j=await postLogin('login_submit',{{user:u.value,password:p.value}});p.value='';m.textContent=j.message||j.state;if(j.state==='logged_in'||j.state==='verifying')setTimeout(()=>location.reload(),2500)}}catch(e){{p.value='';m.textContent='로그인 제출 요청 실패'}}finally{{loginSubmitInFlight=false;b.disabled=false}}}}async function runAction(a,b){{let c=document.getElementById('checkBtn'),d=document.getElementById('attBtn'),v=document.getElementById('vncBtn'),x=document.getElementById('busy');c.disabled=d.disabled=true;v.style.pointerEvents='none';v.style.opacity='.6';x.style.display='block';b.textContent=a==='attendance'?'출석 처리 중...':'상태 확인 중...';let done=false;let w=setTimeout(()=>{{if(!done)location.reload()}},125000);let ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),120000);try{{let q=new URLSearchParams();q.set('do',a);q.set('ajax','1');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'}},body:q,signal:ctl.signal,cache:'no-store'}});let j=await r.json();done=true;clearTimeout(w);clearTimeout(t);x.textContent=(j.message||j.state||'완료');setTimeout(()=>location.reload(),900)}}catch(e){{done=true;clearTimeout(w);clearTimeout(t);x.textContent='요청이 시간 초과되었거나 연결이 끊겼습니다.';setTimeout(()=>location.reload(),1200)}}}}</script></body></html>'''
@@ -388,17 +416,8 @@ def _verify_login_after_submit():
     log('WARNING','Login assist: Toptoon login was not confirmed after background verification window.')
 
 def submit_toptoon_login(user,password):
-    if not user or not password:return 'input_required','ID와 비밀번호를 모두 입력해 주세요.'
-    st=load_json(STATUS_PATH,{})
-    if st.get('login_state')=='verifying':
-        try:
-            age=(now_local()-datetime.fromisoformat(st.get('status_checked_at'))).total_seconds()
-        except Exception:
-            age=0
-        if age < 90:
-            return 'already_submitting','이미 로그인 제출 후 확인 중입니다. 잠시 뒤 상태를 확인해 주세요.'
     if not LOGIN_SUBMIT_LOCK.acquire(blocking=False):
-        return 'already_submitting','이미 로그인 제출을 처리 중입니다. 잠시 뒤 상태를 확인해 주세요.'
+        return 'already_submitting','이미 로그인 준비를 처리 중입니다. 잠시 뒤 다시 시도해 주세요.'
     try:
         with BROWSER_LOCK:
             ok,msg=open_toptoon_login_page()
@@ -406,34 +425,9 @@ def submit_toptoon_login(user,password):
                 save_status(login_state='manual_needed',login_message=f'브라우저 로그인 제출 준비 실패: {msg}',status_checked_at=now_local().isoformat(timespec='seconds'))
                 log('WARNING',f'Login assist: browser-input submit could not open login page: {msg}')
                 return 'manual_needed','로그인 브라우저를 자동으로 제어하지 못했습니다. 로그인 브라우저에서 수동으로 로그인해 주세요.'
-            time.sleep(2.8)
-            ok,msg=x_click(512,170)
-            if not ok:
-                save_status(login_state='manual_needed',login_message=f'브라우저 입력칸 선택 실패: {msg}',status_checked_at=now_local().isoformat(timespec='seconds'))
-                return 'manual_needed','로그인 입력칸을 자동으로 선택하지 못했습니다. 로그인 브라우저에서 수동으로 로그인해 주세요.'
-            x_key('ctrl+a')
-            ok,msg=paste_text_to_chromium_field(user)
-            if not ok:
-                save_status(login_state='manual_needed',login_message=f'ID 자동 입력 실패: {msg}',status_checked_at=now_local().isoformat(timespec='seconds'))
-                return 'manual_needed','ID를 브라우저에 자동 입력하지 못했습니다. 로그인 브라우저에서 수동으로 로그인해 주세요.'
-            time.sleep(0.15)
-            x_key('Tab')
-            time.sleep(0.15)
-            x_key('ctrl+a')
-            ok,msg=paste_text_to_chromium_field(password)
-            if not ok:
-                save_status(login_state='manual_needed',login_message=f'비밀번호 자동 입력 실패: {msg}',status_checked_at=now_local().isoformat(timespec='seconds'))
-                return 'manual_needed','비밀번호를 브라우저에 자동 입력하지 못했습니다. 로그인 브라우저에서 수동으로 로그인해 주세요.'
-            time.sleep(0.18)
-            ok,msg=x_key('Return')
-            clear_x_clipboard_later(2)
-            if not ok:
-                save_status(login_state='manual_needed',login_message=f'로그인 제출 키 전달 실패: {msg}',status_checked_at=now_local().isoformat(timespec='seconds'))
-                return 'manual_needed','로그인 제출 키를 브라우저에 전달하지 못했습니다. 로그인 브라우저에서 수동으로 로그인해 주세요.'
-        save_status(login_state='verifying',login_message='Chromium 실제 로그인 화면에 ID/비밀번호를 입력하고 제출했습니다. Toptoon 인증 확인 중입니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-        threading.Thread(target=_verify_login_after_submit,daemon=True).start()
-        log('INFO','Login assist: credentials were submitted through Chromium X input; background auth verification started.')
-        return 'verifying','브라우저 로그인 화면에 입력하고 제출했습니다. 10~30초 뒤 저장된 로그인 상태 확인 또는 출석 테스트를 눌러 주세요.'
+        save_status(login_state='login_ready',login_message='Chromium에 Toptoon 로그인 화면을 열었습니다. 로그인 브라우저에서 직접 로그인해 주세요.',status_checked_at=now_local().isoformat(timespec='seconds'))
+        log('INFO','Login assist: manual browser login page prepared; automatic credential typing is disabled in this setup build.')
+        return 'login_ready','로그인 브라우저에서 보면서 직접 로그인해 주세요. 로그인 후 저장된 로그인 상태 확인 또는 출석 테스트를 눌러 주세요.'
     finally:
         LOGIN_SUBMIT_LOCK.release()
 

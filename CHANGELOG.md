@@ -1,4 +1,11 @@
-# Toptoon Attendance Bot v0.5.22
+# Toptoon Attendance Bot v0.5.23
+
+## v0.5.23
+- Added Chromium login-page preparation fallback through the remote debugging endpoint and CDP navigation when xdotool cannot find or activate the visible Chromium window.
+- Broadened Chromium xdotool window matching to include `chromium-browser` class names and non-visible search fallback.
+- Switched the setup flow to manual visible-browser login instead of hardcoded coordinate credential typing.
+- The login card now opens the VNC browser console directly so account prompts, CAPTCHA, and field placement can be handled visibly.
+- Synchronized visible version strings to 0.5.23.
 
 ## v0.5.22
 - Changed Toptoon ID login submission from direct HTTP POST to real Chromium browser input using the virtual display, clipboard, and keyboard events.
