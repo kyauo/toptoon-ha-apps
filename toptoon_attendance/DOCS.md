@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.18
+# Toptoon Attendance Bot v0.5.19
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.19
+- 시작 시 Supervisor API를 통해 저장된 legacy `phpsessid`, `rm_session` 옵션을 제거합니다.
+- 두 legacy key는 migration 검증을 위해 schema에만 남기고 기본 options에는 더 이상 넣지 않습니다.
+- cleanup 결과를 앱 로그에 남깁니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.19로 통일했습니다.
 
 ## v0.5.18
 - Toptoon ID 로그인 응답이 HTTP 200 `text/html`이어도 곧바로 실패하지 않고 direct attendance probe로 실제 로그인 여부를 확인합니다.

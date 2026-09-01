@@ -1,6 +1,6 @@
 name: "Toptoon Attendance Bot"
 description: "Automatically checks in to Toptoon with a persistent Chromium login session, retries failures, and notifies Home Assistant."
-version: "0.5.18"
+version: "0.5.19"
 slug: "toptoon_attendance"
 init: false
 startup: application
@@ -29,8 +29,6 @@ options:
   notify_on_failure: true
   notify_on_success: true
   notify_manual_reminder: true
-  phpsessid: ""
-  rm_session: ""
 
 schema:
   run_time: "match(^([01][0-9]|2[0-3]):[0-5][0-9]$)"

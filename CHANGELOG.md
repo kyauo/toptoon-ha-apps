@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.18
+# Toptoon Attendance Bot v0.5.19
+
+## v0.5.19
+- Added startup migration that removes stored legacy `phpsessid` and `rm_session` options from Supervisor's saved app configuration through the Supervisor options API.
+- Kept the legacy keys in schema only, without default option values, so old saved configs validate during migration but new defaults no longer recreate them.
+- Logs whether legacy option cleanup removed values, found nothing to remove, or could not reach the Supervisor API.
+- Synchronized visible version strings to 0.5.19.
 
 ## v0.5.18
 - Treat HTTP 200 `text/html` login responses as potentially successful and verify them with the direct attendance probe before failing.

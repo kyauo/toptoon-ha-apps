@@ -2,7 +2,7 @@ import html, json, os, subprocess, threading, time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote
+from urllib.parse import parse_qs
 from zoneinfo import ZoneInfo
 import requests
 from selenium import webdriver
@@ -18,6 +18,7 @@ PAGE_URL='https://toptoon.com/event/attendance'; WEB_PORT=8098
 PERSISTENT_NOTIFICATION_ID='toptoon_attendance_failure'; OK_STATES={'success','already_done'}
 BROWSER_LOCK=threading.Lock()
 LOGIN_SUBMIT_LOCK=threading.Lock()
+LEGACY_OPTION_KEYS={'phpsessid','rm_session'}
 
 def load_json(p,d):
     try:return json.loads(p.read_text(encoding='utf-8'))
@@ -60,6 +61,40 @@ def mobile_push(entity,title,message):
 def persistent_failure(msg):
     if ha_service('persistent_notification','create',{'notification_id':PERSISTENT_NOTIFICATION_ID,'title':'Toptoon 출석 실패','message':msg}): log('INFO','Persistent failure notification created.')
 def dismiss_failure(): ha_service('persistent_notification','dismiss',{'notification_id':PERSISTENT_NOTIFICATION_ID})
+
+def supervisor_api(method,path,payload=None):
+    token=os.environ.get('SUPERVISOR_TOKEN')
+    if not token:return None
+    try:
+        r=requests.request(method,f'http://supervisor{path}',headers={'Authorization':f'Bearer {token}','Content-Type':'application/json'},json=payload,timeout=10)
+        if r.status_code>=400:
+            log('WARNING',f'Supervisor API {method} {path} failed: HTTP {r.status_code} {r.text[:160]}')
+            return None
+        try:return r.json()
+        except Exception:return {}
+    except Exception as e:
+        log('WARNING',f'Supervisor API {method} {path} failed: {type(e).__name__}: {str(e)[:160]}')
+        return None
+
+def cleanup_legacy_options():
+    """Remove old manual-cookie options from Supervisor's stored app config."""
+    for base in ('/addons/self','/apps/self'):
+        info=supervisor_api('GET',f'{base}/info')
+        if not isinstance(info,dict):continue
+        data=info.get('data') if isinstance(info.get('data'),dict) else info
+        opts=data.get('options') if isinstance(data,dict) else None
+        if not isinstance(opts,dict):continue
+        found=sorted(k for k in LEGACY_OPTION_KEYS if k in opts)
+        if not found:
+            log('INFO','Legacy option cleanup: no phpsessid/rm_session values are stored.')
+            return
+        cleaned={k:v for k,v in opts.items() if k not in LEGACY_OPTION_KEYS}
+        res=supervisor_api('POST',f'{base}/options',{'options':cleaned})
+        if isinstance(res,dict):
+            log('INFO',f"Legacy option cleanup: removed stored options {', '.join(found)} via {base}/options.")
+            save_status(legacy_options_cleaned_at=now_local().isoformat(timespec='seconds'))
+            return
+    log('WARNING','Legacy option cleanup: could not read or update Supervisor app options.')
 
 def browser_driver():
     opts=Options(); opts.page_load_strategy='none'; opts.add_experimental_option('debuggerAddress','127.0.0.1:9222'); opts.binary_location='/usr/bin/chromium-browser'
@@ -255,22 +290,6 @@ def _persist_verified_login_session(sess):
     log('INFO',f'Login assist: Toptoon ID login persisted {copied} cookies after direct auth probe confirmed login.')
     return 'logged_in','Toptoon ID 로그인 성공. Chromium 세션에 저장했습니다.'
 
-def _open_chrome_url_http(url):
-    """Open a URL through Chromium's debugging HTTP endpoint without waiting on the renderer."""
-    q=quote(url,safe='')
-    for endpoint in (f'http://127.0.0.1:9222/json/new?{q}',f'http://127.0.0.1:9222/json/new?url={q}'):
-        try:
-            r=requests.put(endpoint,timeout=(1,4))
-            if r.status_code in (200,201):return True
-        except Exception:
-            pass
-        try:
-            r=requests.get(endpoint,timeout=(1,4))
-            if r.status_code in (200,201):return True
-        except Exception:
-            pass
-    return False
-
 def prepare_login():
     save_status(login_state='login_ready',login_message='Toptoon ID/비밀번호 직접 로그인을 사용할 준비가 되었습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
     log('INFO','Login assist: Toptoon ID/password direct login is ready; Chromium is not touched during preparation.')
@@ -416,7 +435,7 @@ def start_ui():
 def at_time(n,t):return n.strftime('%H:%M')==t
 
 def main():
-    o=load_options(); log('INFO','Starting Toptoon Attendance Bot...'); log('INFO','Persistent Chromium profile: /data/chromium-profile'); log('INFO','Ingress opens the control/status UI. VNC is reserved for login renewal.'); log('INFO',f"Daily attendance: {o.get('run_time','00:30')} ({o.get('timezone','Asia/Seoul')}); retries +{o.get('retry_1_minutes',5)}m/+{o.get('retry_2_minutes',15)}m; mobile alert check: {o.get('mobile_alert_time','09:05')}; manual reminder: {o.get('manual_reminder_time','21:00')}"); start_ui()
+    o=load_options(); log('INFO','Starting Toptoon Attendance Bot...'); cleanup_legacy_options(); log('INFO','Persistent Chromium profile: /data/chromium-profile'); log('INFO','Ingress opens the control/status UI. VNC is reserved for login renewal.'); log('INFO',f"Daily attendance: {o.get('run_time','00:30')} ({o.get('timezone','Asia/Seoul')}); retries +{o.get('retry_1_minutes',5)}m/+{o.get('retry_2_minutes',15)}m; mobile alert check: {o.get('mobile_alert_time','09:05')}; manual reminder: {o.get('manual_reminder_time','21:00')}"); start_ui()
     if o.get('run_on_start',False):run_with_retries(o)
     last=None
     while True:
