@@ -1,6 +1,11 @@
-# Toptoon Attendance Bot v0.5.16
+# Toptoon Attendance Bot v0.5.17
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.17
+- Toptoon ID 로그인 응답이 HTTP 200이지만 JSON으로 바로 파싱되지 않는 경우 JSON 객체 복구 파싱을 시도합니다.
+- JSON 파싱이 끝내 실패하면 content-type과 짧은 응답 앞부분을 로그에 남겨 다음 원인 분석이 가능하게 했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.17로 통일했습니다.
 
 ## v0.5.16
 - 과거 저장된 `phpsessid`, `rm_session` 옵션을 Supervisor validation 호환용으로만 다시 허용합니다.

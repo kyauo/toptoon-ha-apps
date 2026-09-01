@@ -1,4 +1,9 @@
-# Toptoon Attendance Bot v0.5.16
+# Toptoon Attendance Bot v0.5.17
+
+## v0.5.17
+- Added resilient login response parsing that can recover a JSON object embedded in an otherwise non-JSON Toptoon response.
+- Logs the content type and a short sanitized response snippet when Toptoon returns HTTP 200 with a body that still cannot be parsed as JSON.
+- Synchronized visible version strings to 0.5.17.
 
 ## v0.5.16
 - Reintroduced legacy `phpsessid` and `rm_session` config keys as ignored compatibility options so Supervisor can validate old saved app options without warnings.

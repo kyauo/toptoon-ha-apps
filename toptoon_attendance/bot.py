@@ -23,6 +23,18 @@ def load_json(p,d):
     try:return json.loads(p.read_text(encoding='utf-8'))
     except Exception:return d
 
+def parse_response_json(r):
+    try:return r.json()
+    except Exception:
+        text=(r.text or '').strip()
+        start=text.find('{'); end=text.rfind('}')
+        if start>=0 and end>start:
+            try:return json.loads(text[start:end+1])
+            except Exception:pass
+        ctype=r.headers.get('content-type','')
+        snippet=' '.join(text[:220].split())
+        return None,ctype,snippet
+
 def save_json(p,d):
     t=p.with_suffix(p.suffix+'.tmp'); t.write_text(json.dumps(d,ensure_ascii=False,indent=2),encoding='utf-8'); t.replace(p)
 def load_options(): return load_json(OPTIONS_PATH,{})
@@ -289,8 +301,12 @@ def submit_toptoon_login(user,password):
             data={'user_id':user,'user_pw':password,'id_save':'1','auto_login':'1','tokn':'','captcha':'','ci_token':ci}
             r=sess.post('https://toptoon.com/login/login_proc',data=data,headers={'Accept':'application/json, text/javascript, */*; q=0.01','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Origin':'https://toptoon.com','Referer':login_url},timeout=(5,12))
             log('INFO',f'Login assist: direct Toptoon ID login returned HTTP {r.status_code} after {time.monotonic()-t0:.1f}s.')
-            try:body=r.json()
-            except Exception:return 'invalid_response',f'로그인 응답을 JSON으로 읽지 못했습니다: HTTP {r.status_code}'
+            parsed=parse_response_json(r)
+            if isinstance(parsed,tuple):
+                _,ctype,snippet=parsed
+                log('WARNING',f'Login assist: non-JSON Toptoon login response: content-type={ctype or "-"} snippet={snippet!r}')
+                return 'invalid_response',f'로그인 응답을 JSON으로 읽지 못했습니다: HTTP {r.status_code} / {ctype or "content-type 없음"}'
+            body=parsed
             msg=str(body.get('message') or body.get('alert') or '') if isinstance(body,dict) else ''
             if isinstance(body,dict) and body.get('result'):
                 state,probe_msg=_toptoon_auth_probe_session(sess)
