@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.24
+# Toptoon Attendance Bot v0.5.25
+
+## v0.5.25
+- Changed the lightweight Xvfb display from 640x480x8 to 640x480x16 because 8-bit color can render as a black screen in Chromium/noVNC.
+- Pinned the Chromium window position to 0,0 so the browser starts inside the visible VNC canvas.
+- Kept image loading disabled and noVNC quality low for the lighter setup browser.
+- Synchronized visible version strings to 0.5.25.
 
 ## v0.5.24
 - Reduced the virtual browser from 1024x720x16 to 640x480x8 to lower CPU and VNC rendering load.

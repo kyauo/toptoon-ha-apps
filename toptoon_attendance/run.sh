@@ -55,7 +55,7 @@ dump_log() {
 }
 
 log INFO "Launching lightweight Xvfb display :99..."
-Xvfb :99 -screen 0 640x480x8 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
+Xvfb :99 -screen 0 640x480x16 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
 XVFB_PID=$!
 sleep 1
 if ! kill -0 "$XVFB_PID" 2>/dev/null; then dump_log "Xvfb" /tmp/xvfb.log; exit 1; fi
@@ -89,6 +89,7 @@ chromium-browser \
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port=9222 \
   --window-size=640,480 \
+  --window-position=0,0 \
   "$LOGIN_URL" \
   >/tmp/chromium.log 2>&1 &
 CHROME_PID=$!

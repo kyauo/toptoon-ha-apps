@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.24
+# Toptoon Attendance Bot v0.5.25
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.25
+- Chromium/noVNC에서 까만 화면이 나올 수 있어 Xvfb를 640x480x8에서 640x480x16으로 되돌렸습니다.
+- Chromium 창 위치를 0,0으로 고정해 VNC 화면 안에서 시작하도록 했습니다.
+- 이미지 차단과 낮은 noVNC 품질은 유지해 세팅 브라우저 부담을 계속 낮췄습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.25로 통일했습니다.
 
 ## v0.5.24
 - 가상 브라우저 화면을 1024x720x16에서 640x480x8로 낮춰 CPU와 VNC 렌더링 부담을 줄였습니다.
