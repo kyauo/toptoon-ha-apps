@@ -17,6 +17,7 @@ OPTIONS_PATH=Path('/data/options.json'); STATUS_PATH=Path('/data/status.json')
 PAGE_URL='https://toptoon.com/event/attendance'; WEB_PORT=8098
 PERSISTENT_NOTIFICATION_ID='toptoon_attendance_failure'; OK_STATES={'success','already_done'}
 BROWSER_LOCK=threading.Lock()
+LOGIN_SUBMIT_LOCK=threading.Lock()
 
 def load_json(p,d):
     try:return json.loads(p.read_text(encoding='utf-8'))
@@ -55,7 +56,7 @@ def page_text(d):
     try:return d.find_element(By.TAG_NAME,'body').text
     except Exception:return ''
 def login_probe(d):
-    """Conservative DOM/cookie probe. Never claim logged-in from absence of a login page alone."""
+    """Conservative DOM probe. Final auth truth comes from the direct attendance AJAX probe."""
     try:
         u=d.current_url.lower()
         if 'facebook.com' in u or 'login' in u or 'member/login' in u:
@@ -67,9 +68,6 @@ def login_probe(d):
         logout_nodes=d.find_elements(By.XPATH,"//*[self::a or self::button][contains(normalize-space(.),'로그아웃') or contains(translate(@href,'LOGOUT','logout'),'logout')]")
         if any(e.is_displayed() for e in logout_nodes):
             return 'logged_in'
-        names={c.get('name') for c in d.get_cookies()}
-        if 'rm_session' in names:
-            return 'probably_logged_in'
     except Exception:
         pass
     return 'unknown'
@@ -164,10 +162,10 @@ def render_ui(message='',kind=''):
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Toptoon Attendance Bot</title><style>
 :root{{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}body{{margin:0;background:#f4f5f7;color:#202124}}.wrap{{max-width:720px;margin:0 auto;padding:20px;position:relative}}.card{{background:white;border-radius:16px;padding:20px;box-shadow:0 2px 10px #0001;margin-bottom:16px}}h1{{font-size:24px;margin:0 36px 6px 0}}p{{line-height:1.55}}.close{{position:absolute;right:25px;top:22px;border:0;background:transparent;font-size:28px;cursor:pointer;color:#666}}.badge{{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;font-size:13px}}.good{{background:#e8f5e9;color:#1b5e20}}.bad{{background:#ffebee;color:#b71c1c}}.neutral{{background:#eceff1;color:#455a64}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}}.item{{border:1px solid #e5e7eb;border-radius:12px;padding:13px}}.label{{color:#6b7280;font-size:12px}}.value{{font-size:17px;font-weight:700;margin-top:4px}}.actions{{display:grid;gap:10px}}button,.btn{{width:100%;box-sizing:border-box;border:0;border-radius:11px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:block}}button:disabled{{opacity:.65;cursor:wait}}.primary{{background:#e53935;color:white}}.secondary{{background:#e8eaed;color:#202124}}.danger{{background:#fff3e0;color:#bf360c}}.busy{{display:none;margin-top:12px;border-radius:10px;padding:12px;background:#e3f2fd;color:#0d47a1;font-weight:700}}.note{{color:#5f6368;font-size:13px}}.okmsg,.warnmsg{{border-radius:10px;padding:12px;margin:12px 0}}.okmsg{{background:#e8f5e9}}.warnmsg{{background:#fff3e0}}@media(prefers-color-scheme:dark){{body{{background:#111827;color:#f3f4f6}}.card{{background:#1f2937}}.item{{border-color:#374151}}.secondary{{background:#374151;color:#f3f4f6}}.note,.label{{color:#9ca3af}}.close{{color:#d1d5db}}}}</style></head><body><div class="wrap">
 <button class="close" onclick="try{{window.parent.location.href='/'}}catch(e){{history.back()}}">×</button><div class="card"><h1>Toptoon Attendance Bot</h1><p>평소에는 이 화면에서 상태만 확인하면 됩니다. <b>로그인 브라우저는 Toptoon 로그인이 풀렸을 때만</b> 열어 주세요. 브라우저 프로필은 앱 재시작 후에도 유지됩니다.</p>{alert}<span class="badge {badge[0]}">{badge[1]}</span><div class="grid"><div class="item"><div class="label">오늘 출석</div><div class="value">{html.escape(str(st.get('today_status','아직 확인 안 함')))}</div></div><div class="item"><div class="label">마지막 상태 확인</div><div class="value" style="font-size:13px">{html.escape(fmt_time(st.get('status_checked_at')))}</div></div></div></div>
-<div class="card"><b>빠른 Facebook 로그인</b><p class="note">VNC 화면을 기다리지 않고 Selenium이 로그인 페이지를 직접 조작합니다. 먼저 준비 버튼을 누른 뒤 ID와 비밀번호를 입력하세요. 비밀번호는 저장하거나 로그에 남기지 않습니다.</p><div class="actions"><button class="secondary" id="prepBtn" onclick="loginPrepare(this)">Facebook 로그인 화면 준비</button></div><div style="display:grid;gap:8px;margin-top:10px"><input id="fbid" autocomplete="username" placeholder="Facebook ID" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><input id="fbpw" type="password" autocomplete="current-password" placeholder="Facebook 비밀번호" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><button class="primary" id="loginBtn" onclick="loginSubmit(this)">Facebook 로그인 제출</button><div id="loginMsg" class="note"></div></div></div>
+<div class="card"><b>빠른 Facebook 로그인</b><p class="note">VNC 화면을 기다리지 않고 persistent Chromium의 현재 Facebook 로그인 페이지에 한 번의 CDP 제출 명령을 보냅니다. 먼저 준비 버튼을 누른 뒤 ID와 비밀번호를 입력하세요. 비밀번호는 저장하거나 로그에 남기지 않습니다.</p><div class="actions"><button class="secondary" id="prepBtn" onclick="loginPrepare(this)">Facebook 로그인 화면 준비</button></div><div style="display:grid;gap:8px;margin-top:10px"><input id="fbid" autocomplete="username" placeholder="Facebook ID" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><input id="fbpw" type="password" autocomplete="current-password" placeholder="Facebook 비밀번호" style="padding:12px;border-radius:10px;border:1px solid #d1d5db;font-size:16px"><button class="primary" id="loginBtn" onclick="loginSubmit(this)">Facebook 로그인 제출</button><div id="loginMsg" class="note"></div></div></div>
 <div class="card"><div class="actions"><button id="checkBtn" class="primary" onclick="runAction('check',this)">지금 로그인 상태 확인</button><button id="attBtn" class="danger" onclick="if(confirm('오늘 미출석이면 실제 출석 요청을 실행합니다. 계속할까요?'))runAction('attendance',this)">지금 출석 테스트</button><a id="vncBtn" class="btn secondary" href="login-console">로그인 브라우저 열기</a></div><div id="busy" class="busy">처리 중... 잠시 기다려 주세요.</div><p class="note">로그인을 마치면 브라우저를 그냥 닫아도 됩니다. 로그인 상태는 /data/chromium-profile에 보존됩니다.</p></div>
 <div class="card"><b>자동 실행</b><p class="note">매일 {o.get('run_time','00:30')} ({o.get('timezone','Asia/Seoul')}) · 재시도 +{o.get('retry_1_minutes',5)}분 / +{o.get('retry_2_minutes',15)}분 · 실패 확인 {o.get('mobile_alert_time','09:05')} · 수동 확인 알림 {o.get('manual_reminder_time','21:00')}</p><div class="label">마지막 출석 실행</div><div>{html.escape(fmt_time(st.get('last_run_at')))}</div><div class="label" style="margin-top:10px">마지막 결과</div><div><b>{html.escape(str(st.get('last_result','아직 없음')))}</b> {html.escape(str(st.get('last_message','')))}</div></div></div>
-<script>async function postLogin(doit,extra={{}}){{let q=new URLSearchParams();q.set('do',doit);for(const [k,v] of Object.entries(extra))q.set(k,v);let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store'}});return await r.json()}}async function loginPrepare(b){{let m=document.getElementById('loginMsg');b.disabled=true;m.textContent='Facebook 로그인 화면 준비 중...';let ctl=new AbortController();let tm=setTimeout(()=>ctl.abort(),35000);try{{let q=new URLSearchParams();q.set('do','login_prepare');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store',signal:ctl.signal}});let j=await r.json();m.textContent=j.message||j.state;if(j.state==='logged_in')setTimeout(()=>location.reload(),700)}}catch(e){{m.textContent=e.name==='AbortError'?'35초 안에 준비가 끝나지 않았습니다. Chromium 렌더러 상태를 앱 로그에서 확인해 주세요.':'로그인 화면 준비 요청 실패'}}finally{{clearTimeout(tm);b.disabled=false}}}}async function loginSubmit(b){{let m=document.getElementById('loginMsg'),u=document.getElementById('fbid'),p=document.getElementById('fbpw');if(!u.value||!p.value){{m.textContent='ID와 비밀번호를 모두 입력해 주세요.';return}}b.disabled=true;m.textContent='로그인 제출 중...';try{{let j=await postLogin('login_submit',{{user:u.value,password:p.value}});p.value='';m.textContent=j.message||j.state;if(j.state==='logged_in')setTimeout(()=>location.reload(),800)}}catch(e){{p.value='';m.textContent='로그인 제출 요청 실패'}}finally{{b.disabled=false}}}}async function runAction(a,b){{let c=document.getElementById('checkBtn'),d=document.getElementById('attBtn'),v=document.getElementById('vncBtn'),x=document.getElementById('busy');c.disabled=d.disabled=true;v.style.pointerEvents='none';v.style.opacity='.6';x.style.display='block';b.textContent=a==='attendance'?'출석 처리 중...':'상태 확인 중...';let done=false;let w=setTimeout(()=>{{if(!done)location.reload()}},125000);let ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),120000);try{{let q=new URLSearchParams();q.set('do',a);q.set('ajax','1');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'}},body:q,signal:ctl.signal,cache:'no-store'}});let j=await r.json();done=true;clearTimeout(w);clearTimeout(t);x.textContent=(j.message||j.state||'완료');setTimeout(()=>location.reload(),900)}}catch(e){{done=true;clearTimeout(w);clearTimeout(t);x.textContent='요청이 시간 초과되었거나 연결이 끊겼습니다.';setTimeout(()=>location.reload(),1200)}}}}</script></body></html>'''
+	<script>let loginSubmitInFlight=false;async function postLogin(doit,extra={{}}){{let q=new URLSearchParams();q.set('do',doit);for(const [k,v] of Object.entries(extra))q.set(k,v);let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store'}});return await r.json()}}async function loginPrepare(b){{let m=document.getElementById('loginMsg');b.disabled=true;m.textContent='Facebook 로그인 화면 준비 중...';let ctl=new AbortController();let tm=setTimeout(()=>ctl.abort(),35000);try{{let q=new URLSearchParams();q.set('do','login_prepare');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:q,cache:'no-store',signal:ctl.signal}});let j=await r.json();m.textContent=j.message||j.state;if(j.state==='logged_in')setTimeout(()=>location.reload(),700)}}catch(e){{m.textContent=e.name==='AbortError'?'35초 안에 준비가 끝나지 않았습니다. Chromium 렌더러 상태를 앱 로그에서 확인해 주세요.':'로그인 화면 준비 요청 실패'}}finally{{clearTimeout(tm);b.disabled=false}}}}async function loginSubmit(b){{let m=document.getElementById('loginMsg'),u=document.getElementById('fbid'),p=document.getElementById('fbpw');if(loginSubmitInFlight){{m.textContent='이미 로그인 제출을 처리 중입니다.';return}}if(!u.value||!p.value){{m.textContent='ID와 비밀번호를 모두 입력해 주세요.';return}}loginSubmitInFlight=true;b.disabled=true;m.textContent='로그인 제출 중...';try{{let j=await postLogin('login_submit',{{user:u.value,password:p.value}});p.value='';m.textContent=j.message||j.state;if(j.state==='logged_in'||j.state==='verifying')setTimeout(()=>location.reload(),2500)}}catch(e){{p.value='';m.textContent='로그인 제출 요청 실패'}}finally{{loginSubmitInFlight=false;b.disabled=false}}}}async function runAction(a,b){{let c=document.getElementById('checkBtn'),d=document.getElementById('attBtn'),v=document.getElementById('vncBtn'),x=document.getElementById('busy');c.disabled=d.disabled=true;v.style.pointerEvents='none';v.style.opacity='.6';x.style.display='block';b.textContent=a==='attendance'?'출석 처리 중...':'상태 확인 중...';let done=false;let w=setTimeout(()=>{{if(!done)location.reload()}},125000);let ctl=new AbortController();let t=setTimeout(()=>ctl.abort(),120000);try{{let q=new URLSearchParams();q.set('do',a);q.set('ajax','1');let r=await fetch('action',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'}},body:q,signal:ctl.signal,cache:'no-store'}});let j=await r.json();done=true;clearTimeout(w);clearTimeout(t);x.textContent=(j.message||j.state||'완료');setTimeout(()=>location.reload(),900)}}catch(e){{done=true;clearTimeout(w);clearTimeout(t);x.textContent='요청이 시간 초과되었거나 연결이 끊겼습니다.';setTimeout(()=>location.reload(),1200)}}}}</script></body></html>'''
 
 
 def _switch_latest_window(d):
@@ -251,43 +249,77 @@ def _verify_login_after_submit():
 
 def submit_facebook_login(user,password):
     if not user or not password:return 'input_required','ID와 비밀번호를 모두 입력해 주세요.'
-    with BROWSER_LOCK:
-        t0=time.monotonic()
+    st=load_json(STATUS_PATH,{})
+    if st.get('login_state')=='verifying':
         try:
-            d=browser_driver(); _switch_latest_window(d)
-            log('INFO','Login assist: submitting transient Facebook credentials with one CDP renderer call (values are not logged or stored).')
-            script="""(() => {
-  const pick = (sels) => sels.map(s => document.querySelector(s)).find(Boolean);
-  const u = pick(["#email","input[name=email]","input[type=email]","input[name*=user]"]);
-  const p = pick(["#pass","input[name=pass]","input[type=password]"]);
-  const b = pick(["button[name=login]","button[type=submit]","input[type=submit]"]);
-  if (!u || !p) return {ok:false, reason:"fields_not_found"};
+            age=(now_local()-datetime.fromisoformat(st.get('status_checked_at'))).total_seconds()
+        except Exception:
+            age=0
+        if age < 90:
+            return 'already_submitting','이미 Facebook 로그인 제출 후 확인 중입니다. 잠시 뒤 상태를 확인해 주세요.'
+    if not LOGIN_SUBMIT_LOCK.acquire(blocking=False):
+        return 'already_submitting','이미 Facebook 로그인 제출을 처리 중입니다. 잠시 뒤 상태를 확인해 주세요.'
+    try:
+        with BROWSER_LOCK:
+            t0=time.monotonic()
+            try:
+                d=browser_driver(); _switch_latest_window(d)
+                log('INFO','Login assist: submitting transient Facebook credentials with one CDP call and duplicate-submit guard (values are not logged or stored).')
+                script="""(() => {
+  const USER = USER_VALUE;
+  const PASS = PASS_VALUE;
+  const selectors = {
+    user: ["#email","input[name=email]","input[type=email]","input[autocomplete=username]","input[name*='user' i]","input[id*='user' i]","input[name*='login' i]","input[id*='login' i]"],
+    pass: ["#pass","input[name=pass]","input[name=password]","input[type=password]","input[autocomplete=current-password]"],
+    submit: ["button[name=login]","button[type=submit]","input[type=submit]","button[data-testid*='login' i]"]
+  };
+  const visible = (el) => !!(el && el.offsetParent !== null && !el.disabled && el.type !== "hidden");
+  const all = (root, sel) => { try { return Array.from(root.querySelectorAll(sel)); } catch (e) { return []; } };
+  const one = (root, sel) => { try { return root.querySelector(sel); } catch (e) { return null; } };
+  const q = (root, sels) => sels.flatMap(s => all(root, s)).find(visible) || sels.map(s => one(root, s)).find(Boolean);
+  const docs = [document];
+  for (const f of Array.from(document.querySelectorAll("iframe,frame"))) {
+    try { if (f.contentDocument) docs.push(f.contentDocument); } catch (e) {}
+  }
   const setv = (el,v) => {
-    const proto = Object.getPrototypeOf(el);
-    const desc = Object.getOwnPropertyDescriptor(proto,"value") || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value");
+    el.focus();
+    const desc = Object.getOwnPropertyDescriptor(el.constructor.prototype,"value") || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value");
     if (desc && desc.set) desc.set.call(el,v); else el.value=v;
-    el.dispatchEvent(new Event("input",{bubbles:true}));
+    el.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"insertText",data:v}));
     el.dispatchEvent(new Event("change",{bubbles:true}));
   };
-  setv(u, USER_VALUE); setv(p, PASS_VALUE);
-  if (!b) return {ok:false, reason:"submit_not_found"};
-  b.click();
-  return {ok:true, reason:"submitted"};
+  for (const doc of docs) {
+    const u = q(doc, selectors.user);
+    const p = q(doc, selectors.pass);
+    if (!u || !p) continue;
+    setv(u, USER); setv(p, PASS);
+    const b = q(doc, selectors.submit) || (p.form && p.form.querySelector("button,input[type=submit]"));
+    if (b) { b.click(); return {ok:true, reason:"clicked"}; }
+    if (p.form) {
+      if (p.form.requestSubmit) p.form.requestSubmit(); else p.form.submit();
+      return {ok:true, reason:"form_submitted"};
+    }
+    p.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",code:"Enter",bubbles:true,cancelable:true}));
+    p.dispatchEvent(new KeyboardEvent("keyup",{key:"Enter",code:"Enter",bubbles:true,cancelable:true}));
+    return {ok:true, reason:"enter_sent"};
+  }
+  return {ok:false, reason:"fields_not_found"};
 })()""".replace('USER_VALUE',json.dumps(user)).replace('PASS_VALUE',json.dumps(password))
-            result=d.execute_cdp_cmd('Runtime.evaluate',{'expression':script,'returnByValue':True,'awaitPromise':False,'userGesture':True})
-            value=((result.get('result') or {}).get('value') or {}) if isinstance(result,dict) else {}
-            if not value.get('ok'):
-                reason=value.get('reason','renderer_error')
-                if reason=='fields_not_found':return 'fields_not_found','Facebook ID/비밀번호 입력칸을 찾지 못했습니다. 보안 확인 화면이면 VNC가 필요합니다.'
-                if reason=='submit_not_found':return 'submit_not_found','Facebook 로그인 버튼을 찾지 못했습니다.'
-                return 'browser_error',f'Facebook 로그인 제출 준비 실패: {reason}'
-            log('INFO',f'Login assist: Facebook submit command accepted after {time.monotonic()-t0:.1f}s; verification continues in background.')
-            save_status(login_state='verifying',login_message='Facebook 로그인 제출 완료. Toptoon 로그인 여부를 백그라운드에서 확인 중입니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
-            threading.Thread(target=_verify_login_after_submit,daemon=True).start()
-            return 'verifying','Facebook 로그인 제출 완료. Toptoon 로그인 여부를 백그라운드에서 확인합니다.'
-        except Exception as e:
-            log('WARNING',f'Login assist submit failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}')
-            return 'browser_error',f'로그인 제출 실패: {type(e).__name__}'
+                result=d.execute_cdp_cmd('Runtime.evaluate',{'expression':script,'returnByValue':True,'awaitPromise':False,'userGesture':True})
+                value=((result.get('result') or {}).get('value') or {}) if isinstance(result,dict) else {}
+                if not value.get('ok'):
+                    reason=value.get('reason','renderer_error')
+                    if reason=='fields_not_found':return 'fields_not_found','Facebook ID/비밀번호 입력칸을 찾지 못했습니다. 보안 확인 화면이면 VNC가 필요합니다.'
+                    return 'browser_error',f'Facebook 로그인 제출 준비 실패: {reason}'
+                log('INFO',f"Login assist: Facebook submit command accepted by {value.get('reason','renderer')} after {time.monotonic()-t0:.1f}s; verification continues in background.")
+                save_status(login_state='verifying',login_message='Facebook 로그인 제출 완료. Toptoon 로그인 여부를 백그라운드에서 확인 중입니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
+                threading.Thread(target=_verify_login_after_submit,daemon=True).start()
+                return 'verifying','Facebook 로그인 제출 완료. Toptoon 로그인 여부를 백그라운드에서 확인합니다.'
+            except Exception as e:
+                log('WARNING',f'Login assist submit failed after {time.monotonic()-t0:.1f}s: {type(e).__name__}: {str(e)[:250]}')
+                return 'browser_error',f'로그인 제출 실패: {type(e).__name__}'
+    finally:
+        LOGIN_SUBMIT_LOCK.release()
 
 def clear_x_clipboard_later(delay=8):
     def _clear():
@@ -344,7 +376,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.split('?',1)[0]!='/action':return self.sendx({'ok':False,'message':'bad request'},True,404)
         p=parse_qs(self.rfile.read(int(self.headers.get('Content-Length','0') or 0)).decode()); a=p.get('do',[''])[0]
         if a=='login_prepare':s,m=prepare_facebook_login(); ok=s in ('facebook_ready','logged_in')
-        elif a=='login_submit':s,m=submit_facebook_login(p.get('user',[''])[0],p.get('password',[''])[0]); ok=s=='logged_in'
+        elif a=='login_submit':s,m=submit_facebook_login(p.get('user',[''])[0],p.get('password',[''])[0]); ok=s in ('verifying','logged_in')
         elif a=='check':s,m=inspect_page(); ok=s=='logged_in'
         elif a=='attendance':s,m=manual_attendance(); ok=s in OK_STATES
         elif a=='paste':
