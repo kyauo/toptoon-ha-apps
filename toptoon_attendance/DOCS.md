@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.27
+# Toptoon Attendance Bot v0.5.28
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.28
+- Toptoon 홈(`/`)도 무거워서, 로그인 성공 후 redirect를 `/robots.txt`로 바꿨습니다.
+- 가벼운 로그인 확인은 legacy cookie 이름을 믿지 않고, 로그인 URL을 요청했을 때 로그인 폼이 다시 나오는지로 판단합니다.
+- v0.5.27의 브라우저 레벨 DevTools websocket 쿠키 읽기는 유지합니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.28로 통일했습니다.
 
 ## v0.5.27
 - Chromium 탭이 `Aw Snap` 상태로 죽어도 브라우저 프로세스의 DevTools websocket에서 쿠키를 읽도록 했습니다.

@@ -3,7 +3,7 @@ set -euo pipefail
 
 export DISPLAY=:99
 PROFILE_DIR=/data/chromium-profile
-LOGIN_URL="https://toptoon.com/alert/auth/login?redirect=/"
+LOGIN_URL="https://toptoon.com/alert/auth/login?redirect=/robots.txt"
 mkdir -p "$PROFILE_DIR"
 
 ts() { date '+%Y-%m-%d %H:%M:%S %Z'; }

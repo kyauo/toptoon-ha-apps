@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.27
+# Toptoon Attendance Bot v0.5.28
+
+## v0.5.28
+- Changed the browser login redirect from `/` to `/robots.txt` because the Toptoon home page is heavier than the login setup browser can reliably render.
+- The lightweight login check now probes the login URL and treats a returned login form as login-required instead of trusting legacy cookie names.
+- Kept browser-level DevTools websocket cookie reading from v0.5.27 for crashed-tab recovery.
+- Synchronized visible version strings to 0.5.28.
 
 ## v0.5.27
 - Added browser-level Chromium DevTools websocket cookie reading so a crashed renderer tab does not block login checks or attendance tests.

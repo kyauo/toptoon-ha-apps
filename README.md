@@ -1,3 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.27
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.28
 
-v0.5.27은 Chromium 탭이 `Aw Snap` 상태로 죽어도 브라우저 프로세스의 DevTools websocket에서 쿠키를 읽어 로그인 확인과 출석 테스트를 계속할 수 있게 한 버전입니다.
+v0.5.28은 로그인 성공 뒤 무거운 홈이나 출석 페이지로 이동하지 않고 `/robots.txt`로 빠지게 해, Chromium 세팅 브라우저가 로그인 직후 크래시할 가능성을 줄인 버전입니다.

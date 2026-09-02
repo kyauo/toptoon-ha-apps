@@ -15,7 +15,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 OPTIONS_PATH=Path('/data/options.json'); STATUS_PATH=Path('/data/status.json')
-PAGE_URL='https://toptoon.com/event/attendance'; LOGIN_URL='https://toptoon.com/alert/auth/login?redirect=/'; WEB_PORT=8098
+PAGE_URL='https://toptoon.com/event/attendance'; LOGIN_URL='https://toptoon.com/alert/auth/login?redirect=/robots.txt'; WEB_PORT=8098
 PERSISTENT_NOTIFICATION_ID='toptoon_attendance_failure'; OK_STATES={'success','already_done'}
 BROWSER_LOCK=threading.Lock()
 LOGIN_SUBMIT_LOCK=threading.Lock()
@@ -388,12 +388,12 @@ def browser_cookie_login_check():
             return 'browser_error',msg
     try:
         t=time.monotonic()
-        r=sess.get('https://toptoon.com/',headers={'Accept':'text/html,application/xhtml+xml','Referer':LOGIN_URL},timeout=(5,12))
-        import re
-        m=re.search(r'user_idx\s*=\s*[\'"]?([1-9][0-9]*)',r.text or '')
+        r=sess.get(LOGIN_URL,headers={'Accept':'text/html,text/plain,*/*','Referer':'https://toptoon.com/'},timeout=(5,12))
+        text=r.text or ''
+        login_form=('name="userId"' in text or "name='userId'" in text or 'signUserPassword' in text)
         names=','.join(sorted(c.get('name','') for c in cookies if c.get('name')))
-        log('INFO',f'Login assist: browser-cookie home probe HTTP {r.status_code} after {time.monotonic()-t:.1f}s using {len(cookies)} cookies [{names}].')
-        if m:
+        log('INFO',f'Login assist: browser-cookie lightweight login-page probe HTTP {r.status_code} after {time.monotonic()-t:.1f}s using {len(cookies)} cookies [{names}], final_url={r.url[:120]!r}.')
+        if not login_form and '/alert/auth/login' not in r.url:
             save_status(login_state='logged_in',login_message='Chromium 쿠키에서 Toptoon 로그인을 확인했습니다.',status_checked_at=now_local().isoformat(timespec='seconds'))
             return 'logged_in','Chromium 쿠키에서 Toptoon 로그인을 확인했습니다. 이제 출석 테스트를 실행해도 됩니다.'
         msg='Chromium 쿠키에서는 아직 Toptoon 로그인이 확인되지 않았습니다.'
