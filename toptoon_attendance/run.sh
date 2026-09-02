@@ -97,6 +97,8 @@ chromium-browser \
   --disable-dev-shm-usage \
   --disable-gpu \
   --disable-3d-apis \
+  --disable-breakpad \
+  --disable-crash-reporter \
   --disable-background-networking \
   --disable-background-timer-throttling \
   --disable-backgrounding-occluded-windows \
@@ -108,11 +110,13 @@ chromium-browser \
   --disable-session-crashed-bubble \
   --hide-crash-restore-bubble \
   --noerrdialogs \
+  --no-zygote \
   --mute-audio \
-  --renderer-process-limit=2 \
+  --renderer-process-limit=1 \
   --process-per-site \
   --blink-settings=imagesEnabled=false \
-  --disable-features=Translate,OptimizationHints,SmoothScrolling,MediaRouter,AutofillServerCommunication \
+  --disable-features=Translate,OptimizationHints,SmoothScrolling,MediaRouter,AutofillServerCommunication,SitePerProcess,IsolateOrigins,AudioServiceOutOfProcess \
+  --js-flags="--max-old-space-size=64" \
   --wm-window-animations-disabled \
   --no-first-run \
   --no-default-browser-check \

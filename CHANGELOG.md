@@ -1,4 +1,11 @@
-# Toptoon Attendance Bot v0.5.30
+# Toptoon Attendance Bot v0.5.31
+
+## v0.5.31
+- Added lower-memory Chromium flags for `Aw Snap! Error code: 9` renderer crashes.
+- Reduced renderer process limit from 2 to 1 and disabled zygote, breakpad, crash reporting, site isolation, isolated origins, and out-of-process audio service.
+- Added a small V8 old-space limit for the setup browser.
+- Kept the 640x480x16 display instead of increasing resolution, because more pixels would raise memory pressure.
+- Synchronized visible version strings to 0.5.31.
 
 ## v0.5.30
 - Normalize Chromium profile preferences before startup so `exit_type` is `Normal` and `exited_cleanly` is true.

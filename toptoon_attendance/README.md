@@ -1,6 +1,13 @@
-# Toptoon Attendance Bot v0.5.30
+# Toptoon Attendance Bot v0.5.31
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.31
+- `Aw Snap! Error code: 9` 렌더러 크래시 대응을 위해 Chromium 저메모리 옵션을 추가했습니다.
+- 렌더러 프로세스 제한을 2에서 1로 낮추고 zygote, breakpad, crash reporter, site isolation, isolated origins, out-of-process audio service를 비활성화했습니다.
+- 세팅 브라우저의 V8 old-space 한도를 작게 잡았습니다.
+- 해상도를 올리면 메모리 부담이 늘 수 있어 640x480x16은 유지했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.31로 통일했습니다.
 
 ## v0.5.30
 - Chromium 시작 전에 profile preference의 `exit_type`을 `Normal`, `exited_cleanly`를 true로 정리합니다.

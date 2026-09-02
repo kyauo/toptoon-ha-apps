@@ -1,3 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.30
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.31
 
-v0.5.30은 Chromium 재시작 때 `Restore pages?` 복구 배너가 뜨지 않도록 프로필 종료 상태를 정상화하고 Chrome crash restore UI를 비활성화한 버전입니다.
+v0.5.31은 `Aw Snap! Error code: 9` 대응을 위해 Chromium 프로세스 수와 사이트 격리/크래시 리포터/JS 메모리 한도를 더 줄인 저메모리 안정화 버전입니다.
