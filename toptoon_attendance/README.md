@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.34
+# Toptoon Attendance Bot v0.5.35
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.35
+- Home Assistant 컨테이너에서 Chromium이 root로 실행되므로 `--no-sandbox`를 복구했습니다.
+- Chromium은 sandbox가 꺼진 상태에서만 zygote 비활성화를 허용하므로 `--no-zygote`도 함께 복구했습니다.
+- `Running as root without --no-sandbox is not supported` 때문에 remote debugging port가 열리지 않는 시작 실패를 수정했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.35로 통일했습니다.
 
 ## v0.5.34
 - sandbox가 켜진 Chromium에서 함께 쓸 수 없는 `--no-zygote` 플래그를 제거했습니다.

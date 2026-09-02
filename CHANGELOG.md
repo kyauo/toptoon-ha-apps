@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.34
+# Toptoon Attendance Bot v0.5.35
+
+## v0.5.35
+- Restored Chromium `--no-sandbox` because the Home Assistant container runs Chromium as root and Chromium refuses to start without it.
+- Restored `--no-zygote` together with `--no-sandbox`; Chromium only allows disabling zygote when sandboxing is disabled.
+- Fixes Chromium failing to open the remote debugging port with `Running as root without --no-sandbox is not supported`.
+- Synchronized visible version strings to 0.5.35.
 
 ## v0.5.34
 - Removed Chromium `--no-zygote` because it cannot be used while sandboxing is enabled.

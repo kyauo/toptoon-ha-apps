@@ -93,6 +93,7 @@ OPENBOX_PID=$!
 
 log INFO "Launching persistent Chromium profile..."
 chromium-browser \
+  --no-sandbox \
   --disable-dev-shm-usage \
   --disable-gpu \
   --disable-3d-apis \
@@ -109,6 +110,7 @@ chromium-browser \
   --disable-session-crashed-bubble \
   --hide-crash-restore-bubble \
   --noerrdialogs \
+  --no-zygote \
   --mute-audio \
   --renderer-process-limit=1 \
   --process-per-site \

@@ -1,3 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.34
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.35
 
-v0.5.34는 sandbox가 켜진 Chromium에서 함께 쓸 수 없는 `--no-zygote` 플래그를 제거해 브라우저가 다시 시작되도록 한 수정 버전입니다.
+v0.5.35는 Home Assistant 컨테이너에서 Chromium이 root로 실행되는 조건에 맞춰 `--no-sandbox`와 `--no-zygote`를 짝으로 복구한 시작 실패 수정 버전입니다.
