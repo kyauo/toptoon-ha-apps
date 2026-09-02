@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.36
+# Toptoon Attendance Bot v0.5.37
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.37
+- VNC 로그인 콘솔 안에 `로그인 페이지 열기` 버튼을 추가했습니다.
+- 상단 텍스트 칸은 로그인 값을 직접 제출하는 칸이 아니라, 아래 원격 Chromium 페이지에서 선택한 입력칸으로 보내는 보안 붙여넣기 도우미임을 안내하도록 문구를 정리했습니다.
+- root 컨테이너 실행에 필요한 `--no-sandbox`는 유지하되, 경고 배너를 숨기기 위해 Chromium `--test-type`을 추가했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.37로 통일했습니다.
 
 ## v0.5.36
 - VNC 새로고침/재연결 때 Toptoon의 무거운 출석 페이지를 다시 렌더링하지 않도록 Chromium 첫 화면을 작은 로컬 data URL 대기 페이지로 바꿨습니다.

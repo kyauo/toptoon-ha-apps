@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.36
+# Toptoon Attendance Bot v0.5.37
+
+## v0.5.37
+- Added a `로그인 페이지 열기` button inside the VNC login console so users can open the Toptoon login page after the lightweight parked browser loads.
+- Updated login console instructions to clarify that the top text field is a secure paste helper for the selected field inside the remote Chromium page.
+- Added Chromium `--test-type` to suppress the unsupported `--no-sandbox` warning banner while keeping `--no-sandbox` for root container startup.
+- Synchronized visible version strings to 0.5.37.
 
 ## v0.5.36
 - Changed Chromium startup from the heavy Toptoon attendance page to a tiny local data URL so VNC refresh/reconnect is much faster.

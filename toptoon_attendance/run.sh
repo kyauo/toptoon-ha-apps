@@ -111,6 +111,7 @@ chromium-browser \
   --hide-crash-restore-bubble \
   --noerrdialogs \
   --no-zygote \
+  --test-type \
   --mute-audio \
   --renderer-process-limit=1 \
   --process-per-site \
