@@ -115,7 +115,7 @@ chromium-browser \
   --process-per-site \
   --blink-settings=imagesEnabled=false \
   --disable-features=Translate,OptimizationHints,SmoothScrolling,MediaRouter,AutofillServerCommunication,SitePerProcess,IsolateOrigins,AudioServiceOutOfProcess \
-  --js-flags="--max-old-space-size=64" \
+  --js-flags="--max-old-space-size=192" \
   --wm-window-animations-disabled \
   --no-first-run \
   --no-default-browser-check \

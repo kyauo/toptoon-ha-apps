@@ -1,6 +1,11 @@
-# Toptoon Attendance Bot v0.5.32
+# Toptoon Attendance Bot v0.5.33
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.33
+- Toptoon 페이지 JavaScript가 너무 작은 heap 제한에서 죽지 않도록 Chromium V8 old-space 한도를 64MB에서 192MB로 올렸습니다.
+- 이전 JS heap 제한이 과했는지 확인하기 위해 화면은 640x480x16, renderer process는 1개로 유지했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.33으로 통일했습니다.
 
 ## v0.5.32
 - HA Chromium에서 지원되지 않는 `--no-sandbox` 실행 플래그를 제거했습니다.

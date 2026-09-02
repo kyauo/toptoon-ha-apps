@@ -1,3 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.32
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.33
 
-v0.5.32는 HA Chromium에서 지원되지 않는 `--no-sandbox` 실행 플래그를 제거한 정리 버전입니다.
+v0.5.33은 Toptoon 페이지 JS가 너무 작은 heap 제한에서 죽지 않도록 Chromium V8 old-space 한도를 64MB에서 192MB로 올린 테스트 버전입니다.

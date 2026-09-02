@@ -1,4 +1,9 @@
-# Toptoon Attendance Bot v0.5.32
+# Toptoon Attendance Bot v0.5.33
+
+## v0.5.33
+- Increased Chromium V8 old-space limit from 64MB to 192MB so Toptoon page JavaScript has more room before renderer crashes.
+- Kept the 640x480x16 display and single renderer process while testing whether the previous JS heap limit was too tight.
+- Synchronized visible version strings to 0.5.33.
 
 ## v0.5.32
 - Removed the unsupported Chromium `--no-sandbox` flag from the app startup command.
