@@ -1,4 +1,11 @@
-# Toptoon Attendance Bot v0.5.28
+# Toptoon Attendance Bot v0.5.29
+
+## v0.5.29
+- Added a UI action to schedule a persistent Chromium profile/cache reset on the next app restart.
+- When the reset flag is present, startup removes `/data/chromium-profile` before launching Chromium.
+- Changed the initial Chromium startup page to `/event/attendance` after reset/startup so testing can begin from the attendance page.
+- Kept login preparation on the lighter Toptoon ID login URL with `/robots.txt` redirect.
+- Synchronized visible version strings to 0.5.29.
 
 ## v0.5.28
 - Changed the browser login redirect from `/` to `/robots.txt` because the Toptoon home page is heavier than the login setup browser can reliably render.

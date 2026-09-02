@@ -1,6 +1,13 @@
-# Toptoon Attendance Bot v0.5.28
+# Toptoon Attendance Bot v0.5.29
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.29
+- 다음 앱 재시작 때 persistent Chromium 프로필/캐시를 삭제하도록 예약하는 UI 버튼을 추가했습니다.
+- 초기화 플래그가 있으면 시작 시 `/data/chromium-profile`을 삭제한 뒤 Chromium을 새로 띄웁니다.
+- 초기화/시작 후 첫 Chromium 페이지를 `/event/attendance`로 바꿔 출석 페이지 기준으로 다시 테스트할 수 있게 했습니다.
+- 로그인 화면 준비는 더 가벼운 Toptoon ID 로그인 URL과 `/robots.txt` redirect를 유지합니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.29로 통일했습니다.
 
 ## v0.5.28
 - Toptoon 홈(`/`)도 무거워서, 로그인 성공 후 redirect를 `/robots.txt`로 바꿨습니다.

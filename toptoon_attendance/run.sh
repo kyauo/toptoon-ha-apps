@@ -3,11 +3,19 @@ set -euo pipefail
 
 export DISPLAY=:99
 PROFILE_DIR=/data/chromium-profile
+RESET_PROFILE_FLAG=/data/reset-chromium-profile
+START_URL="https://toptoon.com/event/attendance"
 LOGIN_URL="https://toptoon.com/alert/auth/login?redirect=/robots.txt"
-mkdir -p "$PROFILE_DIR"
 
 ts() { date '+%Y-%m-%d %H:%M:%S %Z'; }
 log() { echo "[$(ts)] [$1] $2"; }
+
+if [ -f "$RESET_PROFILE_FLAG" ]; then
+  log WARNING "Reset flag found; removing persistent Chromium profile before startup."
+  rm -rf "$PROFILE_DIR"
+  rm -f "$RESET_PROFILE_FLAG"
+fi
+mkdir -p "$PROFILE_DIR"
 
 cleanup() {
   log INFO "Stopping Toptoon Attendance Bot services..."
@@ -90,7 +98,7 @@ chromium-browser \
   --remote-debugging-port=9222 \
   --window-size=640,480 \
   --window-position=0,0 \
-  "$LOGIN_URL" \
+  "$START_URL" \
   >/tmp/chromium.log 2>&1 &
 CHROME_PID=$!
 if ! wait_port 9222 "Chromium remote debugging" 30; then dump_log "Chromium" /tmp/chromium.log; exit 1; fi
