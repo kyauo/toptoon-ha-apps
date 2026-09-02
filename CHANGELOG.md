@@ -1,4 +1,9 @@
-# Toptoon Attendance Bot v0.5.31
+# Toptoon Attendance Bot v0.5.32
+
+## v0.5.32
+- Removed the unsupported Chromium `--no-sandbox` flag from the app startup command.
+- Kept the v0.5.31 low-memory Chromium flags unchanged.
+- Synchronized visible version strings to 0.5.32.
 
 ## v0.5.31
 - Added lower-memory Chromium flags for `Aw Snap! Error code: 9` renderer crashes.

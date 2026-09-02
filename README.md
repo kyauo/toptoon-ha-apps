@@ -1,3 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.31
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.32
 
-v0.5.31은 `Aw Snap! Error code: 9` 대응을 위해 Chromium 프로세스 수와 사이트 격리/크래시 리포터/JS 메모리 한도를 더 줄인 저메모리 안정화 버전입니다.
+v0.5.32는 HA Chromium에서 지원되지 않는 `--no-sandbox` 실행 플래그를 제거한 정리 버전입니다.

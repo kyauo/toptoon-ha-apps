@@ -1,6 +1,11 @@
-# Toptoon Attendance Bot v0.5.31
+# Toptoon Attendance Bot v0.5.32
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.32
+- HA Chromium에서 지원되지 않는 `--no-sandbox` 실행 플래그를 제거했습니다.
+- v0.5.31의 저메모리 Chromium 옵션은 유지했습니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.32로 통일했습니다.
 
 ## v0.5.31
 - `Aw Snap! Error code: 9` 렌더러 크래시 대응을 위해 Chromium 저메모리 옵션을 추가했습니다.
