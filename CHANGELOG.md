@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.33
+# Toptoon Attendance Bot v0.5.34
+
+## v0.5.34
+- Removed Chromium `--no-zygote` because it cannot be used while sandboxing is enabled.
+- Fixes Chromium failing to open the remote debugging port with `Zygote cannot be disabled if sandbox is enabled`.
+- Kept the v0.5.33 V8 heap increase to 192MB.
+- Synchronized visible version strings to 0.5.34.
 
 ## v0.5.33
 - Increased Chromium V8 old-space limit from 64MB to 192MB so Toptoon page JavaScript has more room before renderer crashes.

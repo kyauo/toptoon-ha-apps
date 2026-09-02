@@ -109,7 +109,6 @@ chromium-browser \
   --disable-session-crashed-bubble \
   --hide-crash-restore-bubble \
   --noerrdialogs \
-  --no-zygote \
   --mute-audio \
   --renderer-process-limit=1 \
   --process-per-site \
