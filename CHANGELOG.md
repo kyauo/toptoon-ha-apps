@@ -1,4 +1,10 @@
-# Toptoon Attendance Bot v0.5.35
+# Toptoon Attendance Bot v0.5.36
+
+## v0.5.36
+- Changed Chromium startup from the heavy Toptoon attendance page to a tiny local data URL so VNC refresh/reconnect is much faster.
+- Updated browser reset messaging to say the next restart begins from the lightweight waiting page.
+- Toptoon pages are now opened only on demand through login preparation or direct manual navigation.
+- Synchronized visible version strings to 0.5.36.
 
 ## v0.5.35
 - Restored Chromium `--no-sandbox` because the Home Assistant container runs Chromium as root and Chromium refuses to start without it.

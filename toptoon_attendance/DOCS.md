@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.35
+# Toptoon Attendance Bot v0.5.36
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.36
+- VNC 새로고침/재연결 때 Toptoon의 무거운 출석 페이지를 다시 렌더링하지 않도록 Chromium 첫 화면을 작은 로컬 data URL 대기 페이지로 바꿨습니다.
+- 브라우저 캐시 초기화 예약 안내도 다음 재시작이 가벼운 대기 화면에서 시작한다고 맞췄습니다.
+- Toptoon 페이지는 로그인 준비 또는 사용자의 직접 이동 때만 열립니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.36으로 통일했습니다.
 
 ## v0.5.35
 - Home Assistant 컨테이너에서 Chromium이 root로 실행되므로 `--no-sandbox`를 복구했습니다.

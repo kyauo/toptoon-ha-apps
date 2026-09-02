@@ -4,7 +4,7 @@ set -euo pipefail
 export DISPLAY=:99
 PROFILE_DIR=/data/chromium-profile
 RESET_PROFILE_FLAG=/data/reset-chromium-profile
-START_URL="https://toptoon.com/event/attendance"
+START_URL="data:text/html,%3C!doctype%20html%3E%3Cmeta%20charset%3Dutf-8%3E%3Ctitle%3EToptoon%20Ready%3C%2Ftitle%3E%3Cbody%20style%3D%22font-family%3Asans-serif%3Bpadding%3A24px%22%3EToptoon%20browser%20ready.%3C%2Fbody%3E"
 LOGIN_URL="https://toptoon.com/alert/auth/login?redirect=/robots.txt"
 
 ts() { date '+%Y-%m-%d %H:%M:%S %Z'; }
