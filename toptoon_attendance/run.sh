@@ -16,6 +16,26 @@ if [ -f "$RESET_PROFILE_FLAG" ]; then
   rm -f "$RESET_PROFILE_FLAG"
 fi
 mkdir -p "$PROFILE_DIR"
+python3 - "$PROFILE_DIR" <<'PYPREF'
+import json
+import pathlib
+import sys
+
+profile = pathlib.Path(sys.argv[1])
+default = profile / "Default"
+default.mkdir(parents=True, exist_ok=True)
+pref = default / "Preferences"
+try:
+    data = json.loads(pref.read_text(encoding="utf-8")) if pref.exists() else {}
+except Exception:
+    data = {}
+profile_section = data.setdefault("profile", {})
+profile_section["exit_type"] = "Normal"
+profile_section["exited_cleanly"] = True
+data.setdefault("browser", {})["has_seen_welcome_page"] = True
+pref.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+PYPREF
+log INFO "Chromium profile startup preferences normalized."
 
 cleanup() {
   log INFO "Stopping Toptoon Attendance Bot services..."
@@ -85,6 +105,9 @@ chromium-browser \
   --disable-extensions \
   --disable-notifications \
   --disable-sync \
+  --disable-session-crashed-bubble \
+  --hide-crash-restore-bubble \
+  --noerrdialogs \
   --mute-audio \
   --renderer-process-limit=2 \
   --process-per-site \

@@ -1,6 +1,12 @@
-# Toptoon Attendance Bot v0.5.29
+# Toptoon Attendance Bot v0.5.30
 
 Persistent Chromium 세션으로 Toptoon 출석을 자동 처리합니다.
+
+## v0.5.30
+- Chromium 시작 전에 profile preference의 `exit_type`을 `Normal`, `exited_cleanly`를 true로 정리합니다.
+- `Restore pages?` 복구 배너와 오류 dialog를 숨기는 Chromium 옵션을 추가했습니다.
+- 깨진 브라우저 상태를 다음 재시작 때 지우는 v0.5.29 초기화 예약 흐름은 유지합니다.
+- 버전 표기를 config, DOCS, README, CHANGELOG에서 0.5.30으로 통일했습니다.
 
 ## v0.5.29
 - 다음 앱 재시작 때 persistent Chromium 프로필/캐시를 삭제하도록 예약하는 UI 버튼을 추가했습니다.

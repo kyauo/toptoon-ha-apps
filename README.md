@@ -1,3 +1,3 @@
-# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.29
+# KY Home Assistant Apps — Toptoon Attendance Bot v0.5.30
 
-v0.5.29는 깨진 Chromium 프로필/캐시를 다음 재시작 때 지우는 예약 버튼을 추가하고, 초기화 후 첫 브라우저 화면을 `/event/attendance`로 시작하게 한 복구용 버전입니다.
+v0.5.30은 Chromium 재시작 때 `Restore pages?` 복구 배너가 뜨지 않도록 프로필 종료 상태를 정상화하고 Chrome crash restore UI를 비활성화한 버전입니다.
